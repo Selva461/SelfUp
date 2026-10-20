@@ -82,6 +82,14 @@ fun SelfUpApp(repository: LifeRepository) {
         game.events.collect { event ->
             when (event) {
                 is GameEvent.LeveledUp -> levelUp = event.changes
+                is GameEvent.DayClosed -> launch {
+                    val count = event.report.missed.size
+                    val quests = if (count == 1) "1 daily quest" else "$count daily quests"
+                    snackbar.showSnackbar(
+                        "Missed $quests yesterday: −${event.report.xpLost} XP. Make-up quests added.",
+                        duration = SnackbarDuration.Long,
+                    )
+                }
                 is GameEvent.Completed -> launch {
                     val xp = event.changes.joinToString("  ") { "+${it.delta} ${it.stat.displayName}" }
                     val result = snackbar.showSnackbar(xp, actionLabel = "Undo", duration = SnackbarDuration.Short)

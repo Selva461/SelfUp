@@ -6,6 +6,7 @@ import app.selfup.core.Quest
 import app.selfup.core.StatChange
 import app.selfup.core.StatProgress
 import app.selfup.data.CompletionResult
+import app.selfup.data.DayCloseReport
 import app.selfup.data.DayQuest
 import app.selfup.data.LifeRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -36,21 +38,29 @@ sealed interface GameEvent {
 
     /** One or more stats gained a level from a single completion. */
     data class LeveledUp(val changes: List<StatChange>) : GameEvent
+
+    /** Yesterday's misses were penalized and make-up quests added. */
+    data class DayClosed(val report: DayCloseReport) : GameEvent
 }
 
 /** Today's quests and stats, shared by Home and Quests so both react to the same events. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class GameViewModel(private val repository: LifeRepository) : ViewModel() {
+    private val _events = Channel<GameEvent>(Channel.BUFFERED)
+    val events: Flow<GameEvent> = _events.receiveAsFlow()
+
     val state: StateFlow<TodayState> = repository.observeToday()
+        // Settle penalties for finished days before showing the new one.
+        .onEach { _ ->
+            val report = repository.closeFinishedDays()
+            if (!report.isEmpty) _events.send(GameEvent.DayClosed(report))
+        }
         .flatMapLatest { day ->
             combine(repository.observeStats(), repository.observeDay(day)) { stats, quests ->
                 TodayState(day, stats, quests)
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayState())
-
-    private val _events = Channel<GameEvent>(Channel.BUFFERED)
-    val events: Flow<GameEvent> = _events.receiveAsFlow()
 
     fun complete(quest: Quest, value: Double? = null) {
         viewModelScope.launch {
