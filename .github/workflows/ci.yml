@@ -44,7 +44,7 @@ jobs:
         run: |
           {
             grep -E '^e: |^w: .*error' build.log || true
-            grep -A4 'What went wrong' build.log || true
+            grep -A30 'What went wrong' build.log || true
             grep -B1 -A6 ' FAILED$' build.log || true
           } | head -150 > failures.txt
           split -l 25 failures.txt chunk_
