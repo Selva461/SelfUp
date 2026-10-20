@@ -49,6 +49,14 @@ jobs:
             echo "::error title=Build failure::${msg}"
           done
 
+      # A one-line summary of what was built and tested, readable through the API.
+      - name: Summarize
+        if: always()
+        run: |
+          apks=$(find . -name '*.apk' -not -path './.gradle/*' | tr '\n' ' ')
+          tests=$(find . -path '*/test-results/*' -name '*.xml' -exec grep -ho 'tests="[0-9]*" skipped="[0-9]*" failures="[0-9]*" errors="[0-9]*"' {} + | awk -F'"' '{t+=$2; s+=$4; f+=$6; e+=$8} END {print t" tests, "f" failures, "e" errors, "s" skipped"}')
+          echo "::notice title=Summary::APKs: ${apks:-none} | ${tests}"
+
       - name: Upload test reports
         if: failure()
         uses: actions/upload-artifact@v4
@@ -62,5 +70,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: selfup-debug-apk
-          path: app/build/outputs/**/*.apk
+          path: '**/build/outputs/apk/**/*.apk'
           if-no-files-found: error
