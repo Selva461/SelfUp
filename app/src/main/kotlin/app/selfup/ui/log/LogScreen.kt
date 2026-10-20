@@ -3,6 +3,8 @@
 package app.selfup.ui.log
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -14,10 +16,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -32,13 +32,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.selfup.core.DayBoundary
 import app.selfup.core.GasLevels
 import app.selfup.core.HealthDay
 import app.selfup.core.HealthLog
 import app.selfup.core.Stat
+import app.selfup.ui.components.GlassChip
+import app.selfup.ui.components.GlassGroup
+import app.selfup.ui.components.GroupHeader
+import app.selfup.ui.components.GroupSeparator
+import app.selfup.ui.components.LargeTitle
+import app.selfup.ui.components.pressScale
+import app.selfup.ui.glass.frosted
 import app.selfup.ui.theme.color
+import app.selfup.ui.theme.colorLight
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -59,55 +74,53 @@ fun LogScreen(
     onShare: () -> Unit,
 ) {
     var typingFood by remember { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
+    val logMeal: (String) -> Unit = {
+        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+        onMeal(it)
+    }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
-            start = 20.dp,
-            end = 20.dp,
-            top = contentPadding.calculateTopPadding() + 12.dp,
-            bottom = contentPadding.calculateBottomPadding() + 24.dp,
+            start = 16.dp,
+            end = 16.dp,
+            top = contentPadding.calculateTopPadding() + 8.dp,
+            bottom = contentPadding.calculateBottomPadding(),
         ),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item { SectionTitle("Ate just now") }
-        item {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                state.quickFoods.forEach { food -> AssistChip(onClick = { onMeal(food) }, label = { Text(food) }) }
-                AssistChip(onClick = { typingFood = true }, label = { Text("Other…") })
+        item(key = "title") { LargeTitle("Log") }
+
+        item(key = "meal-header") { GroupHeader("Ate just now") }
+        item(key = "meals") {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                state.quickFoods.forEach { food -> GlassChip(food, onClick = { logMeal(food) }) }
+                GlassChip("Other…", onClick = { typingFood = true }, accent = MaterialTheme.colorScheme.primary)
             }
         }
 
-        item { SectionTitle("Gas right now") }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GasLevels.forEach { level ->
-                    FilledTonalButton(
-                        onClick = { onGas(level) },
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(vertical = 10.dp),
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("$level", style = MaterialTheme.typography.titleMedium)
-                            Text(gasLabels.getValue(level), style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
+        item(key = "gas-header") { GroupHeader("Gas right now") }
+        item(key = "gas") { GasPicker(onGas) }
+
+        item(key = "spend-header") { GroupHeader("Spending · last 14 days") }
+        item(key = "spend") { SpendChart(state.spend) }
+
+        item(key = "days-header") {
+            GroupHeader("Last 7 days") {
+                TextButton(onClick = onShare, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Share for doctor") }
+            }
+        }
+        item(key = "days") {
+            GlassGroup {
+                state.days.forEachIndexed { i, day ->
+                    if (i > 0) GroupSeparator(start = 16.dp)
+                    DayRow(day, boundary)
                 }
             }
         }
-
-        item { SectionTitle("Spending · last 14 days") }
-        item { SpendChart(state.spend) }
-
-        item {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                SectionTitle("Last 7 days", Modifier.weight(1f))
-                TextButton(onClick = onShare) { Text("Share for doctor") }
-            }
-        }
-        items(state.days, key = { it.day.toEpochDay() }) { day -> DayRow(day, boundary) }
-        item {
-            Muted("This is a record to discuss with a doctor, not a diagnosis.")
+        item(key = "note") {
+            Muted("This is a record to discuss with a doctor, not a diagnosis.", Modifier.padding(start = 6.dp, top = 6.dp))
         }
     }
 
@@ -120,7 +133,7 @@ fun LogScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        onMeal(text)
+                        logMeal(text)
                         typingFood = false
                     },
                     enabled = text.isNotBlank(),
@@ -136,7 +149,7 @@ private val dayFormat = DateTimeFormatter.ofPattern("EEE d MMM")
 
 @Composable
 private fun DayRow(day: HealthDay, boundary: DayBoundary) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(vertical = 4.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(Modifier.fillMaxWidth()) {
             Text(day.day.format(dayFormat), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
             val gas = day.averageGas?.let { "Gas avg ${"%.1f".format(it)} · max ${day.maxGas}" } ?: "No gas logged"
@@ -152,6 +165,7 @@ private fun DayRow(day: HealthDay, boundary: DayBoundary) {
                     "$time ${meal.food}$late"
                 },
                 style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -162,9 +176,19 @@ private fun SpendChart(spend: List<Pair<LocalDate, Double>>) {
     val max = spend.maxOfOrNull { it.second }?.takeIf { it > 0 } ?: 1.0
     val total = spend.sumOf { it.second }
     val logged = spend.count { it.second > 0 }
-    val bar = Stat.MONEY.color
-    val track = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    val bar = Brush.verticalGradient(listOf(Stat.MONEY.colorLight, Stat.MONEY.color))
+    val track = Stat.MONEY.color.copy(alpha = 0.10f)
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .frosted()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            if (logged == 0) "No spending yet" else "₹${(total / logged).roundToInt()} a day",
+            style = MaterialTheme.typography.titleLarge,
+        )
         Canvas(
             Modifier
                 .fillMaxWidth()
@@ -186,18 +210,52 @@ private fun SpendChart(spend: List<Pair<LocalDate, Double>>) {
             if (logged == 0) {
                 "Log spending with the daily Money quest to see it here."
             } else {
-                "₹${total.roundToInt()} over $logged logged days · ₹${(total / logged).roundToInt()} a day"
+                "₹${total.roundToInt()} over $logged logged days"
             },
         )
     }
 }
 
 @Composable
-private fun SectionTitle(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.titleMedium, modifier = modifier.padding(top = 6.dp))
+private fun Muted(text: String, modifier: Modifier = Modifier) {
+    Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier)
 }
 
+/** Green to red, so the scale reads at a glance without the labels. */
+private val gasColors = mapOf(
+    1 to Color(0xFF5EE29A),
+    2 to Color(0xFFB5E36A),
+    3 to Color(0xFFF5DA5B),
+    4 to Color(0xFFFFA14D),
+    5 to Color(0xFFFF6A5E),
+)
+
+/** Five frosted tiles in one row; one tap logs that level. */
 @Composable
-private fun Muted(text: String) {
-    Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun GasPicker(onGas: (Int) -> Unit) {
+    val haptics = LocalHapticFeedback.current
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        GasLevels.forEach { level ->
+            val color = gasColors.getValue(level)
+            val interaction = remember { MutableInteractionSource() }
+            val shape = RoundedCornerShape(18.dp)
+            Column(
+                Modifier
+                    .weight(1f)
+                    .pressScale(interaction, 0.92f)
+                    .frosted(shape, tint = color.copy(alpha = 0.08f))
+                    .clickable(interactionSource = interaction, indication = null, role = Role.Button) {
+                        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                        onGas(level)
+                    }
+                    .padding(vertical = 12.dp)
+                    .semantics { contentDescription = "Gas $level, ${gasLabels.getValue(level)}" },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text("$level", style = MaterialTheme.typography.titleLarge, color = color)
+                Text(gasLabels.getValue(level), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
 }

@@ -74,6 +74,12 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
+    // Liquid Glass (refraction, depth blur, specular) and backdrop blur; Android 12+ renders
+    // the full effect, older versions fall back to tinted translucent surfaces automatically.
+    implementation(libs.haze)
+    implementation(libs.haze.blur)
+    implementation(libs.haze.glass)
+
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
