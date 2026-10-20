@@ -25,13 +25,29 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Game rules tests
-        run: ./gradlew :core:test
+        run: ./gradlew :core:test 2>&1 | tee -a build.log
 
       - name: App unit tests
-        run: ./gradlew :app:testDebugUnitTest
+        run: ./gradlew :app:testDebugUnitTest 2>&1 | tee -a build.log
 
       - name: Build debug APK
-        run: ./gradlew :app:assembleDebug
+        run: ./gradlew :app:assembleDebug 2>&1 | tee -a build.log
+
+      # Surfaces compiler errors and test failures as check annotations, which are
+      # readable through the API without downloading logs.
+      - name: Report failures
+        if: failure()
+        run: |
+          {
+            grep -E '^e: |^w: .*error' build.log || true
+            grep -A4 'What went wrong' build.log || true
+            grep -B1 -A6 ' FAILED$' build.log || true
+          } | head -150 > failures.txt
+          split -l 25 failures.txt chunk_
+          for f in chunk_*; do
+            msg=$(sed -e 's/%/%25/g' "$f" | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=Build failure::${msg}"
+          done
 
       - name: Upload test reports
         if: failure()
