@@ -2,9 +2,12 @@ package app.selfup
 
 import android.app.Application
 import app.selfup.data.LifeRepository
+import app.selfup.data.ReminderInput
 import app.selfup.data.SelfUpDatabase
+import app.selfup.reminders.ReminderScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class SelfUpApplication : Application() {
@@ -13,8 +16,19 @@ class SelfUpApplication : Application() {
 
     val repository: LifeRepository by lazy { LifeRepository(SelfUpDatabase.create(this)) }
 
+    private val reminders by lazy { ReminderScheduler(this) }
+
     override fun onCreate() {
         super.onCreate()
         appScope.launch { repository.seedDefaultsOnce() }
+        // Any change to quests or today's completions re-arms reminders, so no call site
+        // (editor, completion, undo, notification action) has to remember to.
+        appScope.launch { repository.observeReminderInputs().collect(::syncReminders) }
     }
+
+    /** One-off re-arm for receivers, which may run before the collector above emits. */
+    suspend fun syncRemindersNow() = syncReminders(repository.observeReminderInputs().first())
+
+    private fun syncReminders(inputs: List<ReminderInput>) =
+        reminders.sync(inputs, repository.dayBoundary, repository.clock.instant())
 }

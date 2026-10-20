@@ -1,5 +1,6 @@
 package app.selfup.data
 
+import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -30,7 +31,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [35])
+@Config(sdk = [35], application = Application::class)
 class LifeRepositoryTest {
     private val zone = ZoneId.of("Asia/Kolkata")
     private val clock = MutableClock(

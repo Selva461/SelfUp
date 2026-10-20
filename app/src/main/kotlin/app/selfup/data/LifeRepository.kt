@@ -11,10 +11,12 @@ import app.selfup.core.Stat
 import app.selfup.core.StatChange
 import app.selfup.core.StatProgress
 import app.selfup.core.XpRules
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import java.time.Clock
@@ -38,6 +40,14 @@ data class DayCloseReport(
     val isEmpty: Boolean get() = missed.isEmpty()
 }
 
+/** What the reminder scheduler needs to know about one quest. */
+data class ReminderInput(
+    val quest: Quest,
+    val doneToday: Boolean,
+    /** A one-time quest that is complete for good. */
+    val finished: Boolean,
+)
+
 sealed interface CompletionResult {
     data class Completed(val changes: List<StatChange>) : CompletionResult
     data object AlreadyDone : CompletionResult
@@ -51,8 +61,8 @@ sealed interface CompletionResult {
  */
 class LifeRepository(
     private val db: SelfUpDatabase,
-    private val clock: Clock = Clock.systemDefaultZone(),
-    private val dayBoundary: DayBoundary = DayBoundary(zone = clock.zone),
+    val clock: Clock = Clock.systemDefaultZone(),
+    val dayBoundary: DayBoundary = DayBoundary(zone = clock.zone),
 ) {
     private val quests = db.questDao()
     private val completions = db.completionDao()
@@ -93,6 +103,26 @@ class LifeRepository(
                 }
             }
             .map { DayQuest(it, byQuest[it.id]) }
+    }
+
+    /** Every quest with a reminder, with today's state, re-emitted on any change. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeReminderInputs(): Flow<List<ReminderInput>> = combine(
+        observeAllQuests(),
+        observeToday().flatMapLatest { completions.observeOn(it.toEpochDay()) },
+        completions.observeFinishedOneTimeIds(),
+    ) { all, doneToday, finishedOneTime ->
+        val done = doneToday.map { it.questId }.toSet()
+        val finished = finishedOneTime.toSet()
+        all.filter { it.reminder != null }.map { ReminderInput(it, it.id in done, it.id in finished) }
+    }
+
+    suspend fun isDoneToday(questId: Long): Boolean {
+        val quest = getQuest(questId) ?: return false
+        return when (quest.schedule) {
+            is Schedule.OneTime -> completions.latest(questId) != null
+            is Schedule.Recurring -> completions.get(questId, today().toEpochDay()) != null
+        }
     }
 
     fun observeAllQuests(): Flow<List<Quest>> =

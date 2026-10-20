@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">SelfUp</string>
+    <string name="channel_reminders">Quest reminders</string>
+    <string name="channel_reminders_description">Nudges for quests you set a reminder time on.</string>
+    <string name="action_done">Done</string>
 </resources>
