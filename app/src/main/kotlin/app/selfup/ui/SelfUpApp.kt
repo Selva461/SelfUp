@@ -1,6 +1,7 @@
 package app.selfup.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -46,10 +48,14 @@ import app.selfup.core.CompletionInput
 import app.selfup.core.Quest
 import app.selfup.core.Stat
 import app.selfup.core.StatChange
+import app.selfup.data.HealthRepository
 import app.selfup.data.LifeRepository
 import app.selfup.ui.components.LevelUpOverlay
 import app.selfup.ui.components.NumberEntryDialog
 import app.selfup.ui.home.HomeScreen
+import app.selfup.ui.log.LogEvent
+import app.selfup.ui.log.LogScreen
+import app.selfup.ui.log.LogViewModel
 import app.selfup.ui.quests.QuestEditorSheet
 import app.selfup.ui.quests.QuestsScreen
 import app.selfup.ui.stat.StatDetailScreen
@@ -59,6 +65,7 @@ import kotlinx.coroutines.launch
 private object Routes {
     const val HOME = "home"
     const val QUESTS = "quests"
+    const val LOG = "log"
     const val STAT = "stat/{key}"
     fun stat(stat: Stat) = "stat/${stat.key}"
 }
@@ -70,7 +77,7 @@ private sealed interface Editing {
 }
 
 @Composable
-fun SelfUpApp(repository: LifeRepository) {
+fun SelfUpApp(repository: LifeRepository, health: HealthRepository) {
     val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository) } })
     val state by game.state.collectAsStateWithLifecycle()
     val allQuests by game.allQuests.collectAsStateWithLifecycle()
@@ -133,7 +140,7 @@ fun SelfUpApp(repository: LifeRepository) {
             containerColor = MaterialTheme.colorScheme.background,
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
-                if (route == Routes.HOME || route == Routes.QUESTS) {
+                if (route == Routes.HOME || route == Routes.QUESTS || route == Routes.LOG) {
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                         NavigationBarItem(
                             selected = route == Routes.HOME,
@@ -146,6 +153,12 @@ fun SelfUpApp(repository: LifeRepository) {
                             onClick = { nav.switchTab(Routes.QUESTS) },
                             icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = null) },
                             label = { Text("Quests") },
+                        )
+                        NavigationBarItem(
+                            selected = route == Routes.LOG,
+                            onClick = { nav.switchTab(Routes.LOG) },
+                            icon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                            label = { Text("Log") },
                         )
                     }
                 }
@@ -170,6 +183,39 @@ fun SelfUpApp(repository: LifeRepository) {
                 }
                 composable(Routes.QUESTS) {
                     QuestsScreen(state, allQuests, padding, onComplete = complete, onEdit = edit)
+                }
+                composable(Routes.LOG) {
+                    val log: LogViewModel = viewModel(factory = viewModelFactory { initializer { LogViewModel(health) } })
+                    val logState by log.state.collectAsStateWithLifecycle()
+                    LaunchedEffect(log) {
+                        log.events.collect { event ->
+                            launch {
+                                val text = when (event) {
+                                    is LogEvent.MealLogged -> "Logged ${event.food}"
+                                    is LogEvent.GasLogged -> "Logged gas ${event.level}"
+                                }
+                                val result = snackbar.showSnackbar(text, actionLabel = "Undo", duration = SnackbarDuration.Short)
+                                if (result == SnackbarResult.ActionPerformed) log.undo(event)
+                            }
+                        }
+                    }
+                    LogScreen(
+                        state = logState,
+                        boundary = health.dayBoundary,
+                        contentPadding = padding,
+                        onMeal = log::logMeal,
+                        onGas = log::logGas,
+                        onShare = {
+                            scope.launch {
+                                val send = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_SUBJECT, "Food and gas log")
+                                    putExtra(Intent.EXTRA_TEXT, log.exportCsv())
+                                }
+                                context.startActivity(Intent.createChooser(send, "Share log"))
+                            }
+                        },
+                    )
                 }
                 composable(Routes.STAT, arguments = listOf(navArgument("key") { type = NavType.StringType })) { entry ->
                     val stat = Stat.fromKey(requireNotNull(entry.arguments?.getString("key")))

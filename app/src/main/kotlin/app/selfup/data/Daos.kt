@@ -112,3 +112,41 @@ interface MetaDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun put(meta: MetaEntity)
 }
+
+@Dao
+interface HealthDao {
+    @Query("SELECT * FROM meal_log WHERE atMillis >= :sinceMillis ORDER BY atMillis DESC")
+    fun observeMeals(sinceMillis: Long): Flow<List<MealLogEntity>>
+
+    @Query("SELECT * FROM gas_log WHERE atMillis >= :sinceMillis ORDER BY atMillis DESC")
+    fun observeGas(sinceMillis: Long): Flow<List<GasLogEntity>>
+
+    @Query("SELECT * FROM meal_log ORDER BY atMillis")
+    suspend fun allMeals(): List<MealLogEntity>
+
+    @Query("SELECT * FROM gas_log ORDER BY atMillis")
+    suspend fun allGas(): List<GasLogEntity>
+
+    @Insert
+    suspend fun insertMeal(meal: MealLogEntity): Long
+
+    @Insert
+    suspend fun insertGas(gas: GasLogEntity): Long
+
+    @Query("DELETE FROM meal_log WHERE id = :id")
+    suspend fun deleteMeal(id: Long)
+
+    @Query("DELETE FROM gas_log WHERE id = :id")
+    suspend fun deleteGas(id: Long)
+
+    /** Money logged through number quests, per quest day. */
+    @Query(
+        """
+        SELECT c.epochDay AS epochDay, SUM(c.value) AS total FROM completion c
+        JOIN quest_stat s ON s.questId = c.questId
+        WHERE s.stat = 'money' AND c.value IS NOT NULL AND c.epochDay >= :sinceEpochDay
+        GROUP BY c.epochDay ORDER BY c.epochDay
+        """,
+    )
+    fun observeDailySpend(sinceEpochDay: Long): Flow<List<DailySpendRow>>
+}

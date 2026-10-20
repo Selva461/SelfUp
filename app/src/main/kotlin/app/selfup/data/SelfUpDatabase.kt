@@ -12,6 +12,8 @@ import androidx.room.RoomDatabase
         CompletionEntity::class,
         XpEventEntity::class,
         MetaEntity::class,
+        MealLogEntity::class,
+        GasLogEntity::class,
     ],
     version = 1,
     exportSchema = true,
@@ -21,6 +23,7 @@ abstract class SelfUpDatabase : RoomDatabase() {
     abstract fun completionDao(): CompletionDao
     abstract fun xpDao(): XpDao
     abstract fun metaDao(): MetaDao
+    abstract fun healthDao(): HealthDao
 
     companion object {
         fun create(context: Context): SelfUpDatabase =
