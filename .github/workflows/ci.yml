@@ -14,6 +14,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # An explicit bash shell runs with pipefail, so `| tee` keeps Gradle's exit code.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -40,7 +44,7 @@ jobs:
         run: |
           {
             grep -E '^e: |^w: .*error' build.log || true
-            grep -A4 'What went wrong' build.log || true
+            grep -A30 'What went wrong' build.log || true
             grep -B1 -A6 ' FAILED$' build.log || true
           } | head -150 > failures.txt
           split -l 25 failures.txt chunk_
@@ -48,6 +52,14 @@ jobs:
             msg=$(sed -e 's/%/%25/g' "$f" | sed -e ':a;N;$!ba;s/\n/%0A/g')
             echo "::error title=Build failure::${msg}"
           done
+
+      # A one-line summary of what was built and tested, readable through the API.
+      - name: Summarize
+        if: always()
+        run: |
+          apks=$(find . -name '*.apk' -not -path './.gradle/*' | tr '\n' ' ')
+          tests=$(find . -path '*/test-results/*' -name '*.xml' -exec grep -ho 'tests="[0-9]*" skipped="[0-9]*" failures="[0-9]*" errors="[0-9]*"' {} + | awk -F'"' '{t+=$2; s+=$4; f+=$6; e+=$8} END {print t" tests, "f" failures, "e" errors, "s" skipped"}')
+          echo "::notice title=Summary::APKs: ${apks:-none} | ${tests}"
 
       - name: Upload test reports
         if: failure()
@@ -62,5 +74,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: selfup-debug-apk
-          path: app/build/outputs/**/*.apk
+          path: '**/build/outputs/apk/**/*.apk'
           if-no-files-found: error
