@@ -19,7 +19,21 @@ android {
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        // A shared debug key (public, debug only) so every CI build installs over the last
+        // one instead of failing on a signature mismatch.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -73,6 +87,12 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.core)
     implementation(libs.androidx.compose.ui.tooling.preview)
     debugImplementation(libs.androidx.compose.ui.tooling)
+
+    // Liquid Glass (refraction, depth blur, specular) and backdrop blur; Android 12+ renders
+    // the full effect, older versions fall back to tinted translucent surfaces automatically.
+    implementation(libs.haze)
+    implementation(libs.haze.blur)
+    implementation(libs.haze.glass)
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
