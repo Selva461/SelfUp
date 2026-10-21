@@ -186,3 +186,15 @@ interface SkillDao {
     @Insert
     suspend fun insert(event: SkillEventEntity): Long
 }
+
+@Dao
+interface MindDao {
+    @Query("SELECT * FROM mind_score ORDER BY atMillis, id")
+    fun observeAll(): Flow<List<MindScoreEntity>>
+
+    @Query("SELECT * FROM mind_score WHERE game = :game ORDER BY atMillis, id")
+    suspend fun forGame(game: String): List<MindScoreEntity>
+
+    @Insert
+    suspend fun insert(score: MindScoreEntity): Long
+}

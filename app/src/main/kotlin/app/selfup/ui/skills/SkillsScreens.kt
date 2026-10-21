@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -72,6 +73,7 @@ fun SkillsScreen(
     contentPadding: PaddingValues,
     onStart: (pack: SkillPack) -> Unit,
     onOpenPack: (SkillPack) -> Unit,
+    extra: LazyListScope.() -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -88,6 +90,7 @@ fun SkillsScreen(
             item(key = "session-${pack.id}") { SessionCard(pack, state, onStart = { onStart(pack) }) }
             item(key = "pack-${pack.id}") { PackCard(pack, state, onClick = { onOpenPack(pack) }) }
         }
+        extra()
         item(key = "note") {
             Text(
                 "Mastery is earned by quizzes spaced over days, then a coding task, then explaining it aloud. " +

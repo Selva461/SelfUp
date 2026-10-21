@@ -3,6 +3,7 @@ package app.selfup
 import android.app.Application
 import app.selfup.data.HealthRepository
 import app.selfup.data.LifeRepository
+import app.selfup.data.MindRepository
 import app.selfup.data.RecordsRepository
 import app.selfup.data.SkillsRepository
 import app.selfup.data.ReminderInput
@@ -26,6 +27,8 @@ class SelfUpApplication : Application() {
     val records: RecordsRepository by lazy { RecordsRepository(database, repository.clock, repository.dayBoundary) }
 
     val skills: SkillsRepository by lazy { SkillsRepository(database, repository.clock, repository.dayBoundary) }
+
+    val mind: MindRepository by lazy { MindRepository(database, repository.clock, repository.dayBoundary) }
 
     private val reminders by lazy { ReminderScheduler(this) }
 

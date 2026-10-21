@@ -18,8 +18,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         GasLogEntity::class,
         RecordEntryEntity::class,
         SkillEventEntity::class,
+        MindScoreEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class SelfUpDatabase : RoomDatabase() {
@@ -30,6 +31,7 @@ abstract class SelfUpDatabase : RoomDatabase() {
     abstract fun healthDao(): HealthDao
     abstract fun recordDao(): RecordDao
     abstract fun skillDao(): SkillDao
+    abstract fun mindDao(): MindDao
 
     companion object {
         fun create(context: Context): SelfUpDatabase =
@@ -59,6 +61,16 @@ abstract class SelfUpDatabase : RoomDatabase() {
                             "`atMillis` INTEGER NOT NULL, `correct` INTEGER, `total` INTEGER)",
                     )
                     db.execSQL("CREATE INDEX IF NOT EXISTS `index_skill_event_conceptId` ON `skill_event` (`conceptId`)")
+                }
+            },
+            object : Migration(3, 4) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `mind_score` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                            "`game` TEXT NOT NULL, `score` REAL NOT NULL, `epochDay` INTEGER NOT NULL, " +
+                            "`atMillis` INTEGER NOT NULL, `xpAwarded` INTEGER NOT NULL)",
+                    )
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_mind_score_game` ON `mind_score` (`game`)")
                 }
             },
         )

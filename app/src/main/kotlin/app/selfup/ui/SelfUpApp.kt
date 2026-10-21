@@ -64,6 +64,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import app.selfup.core.CompletionInput
 import app.selfup.core.Mastery
+import app.selfup.core.MindGame
 import app.selfup.core.PersonalBest
 import app.selfup.core.Quest
 import app.selfup.core.RecordKind
@@ -73,6 +74,7 @@ import app.selfup.core.StatChange
 import app.selfup.core.packs.Packs
 import app.selfup.data.HealthRepository
 import app.selfup.data.LifeRepository
+import app.selfup.data.MindRepository
 import app.selfup.data.RecordsRepository
 import app.selfup.data.SkillResult
 import app.selfup.data.SkillsRepository
@@ -91,6 +93,10 @@ import app.selfup.ui.home.HomeScreen
 import app.selfup.ui.log.LogEvent
 import app.selfup.ui.log.LogScreen
 import app.selfup.ui.log.LogViewModel
+import app.selfup.ui.mind.MindEvent
+import app.selfup.ui.mind.MindSessionScreen
+import app.selfup.ui.mind.MindViewModel
+import app.selfup.ui.mind.mindSection
 import app.selfup.ui.quests.QuestEditorSheet
 import app.selfup.ui.quests.QuestsScreen
 import app.selfup.ui.records.RecordFormat
@@ -131,6 +137,8 @@ private object Routes {
     fun pack(id: String) = "pack/$id"
     fun concept(id: String) = "concept/$id"
     fun quiz(ids: List<String>, learn: List<String>) = "quiz/${ids.joinToString(",")}/${learn.joinToString(",").ifEmpty { "-" }}"
+    const val MIND = "mind/{games}"
+    fun mind(games: List<MindGame>) = "mind/${games.joinToString(",") { it.key }}"
     const val STAT = "stat/{key}"
     fun stat(stat: Stat) = "stat/${stat.key}"
 }
@@ -142,7 +150,7 @@ private sealed interface Editing {
 }
 
 @Composable
-fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository) {
+fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository) {
     val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository) } })
     val state by game.state.collectAsStateWithLifecycle()
     val allQuests by game.allQuests.collectAsStateWithLifecycle()
@@ -179,6 +187,19 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
     val skillsVm: SkillsViewModel = viewModel(factory = viewModelFactory { initializer { SkillsViewModel(skills) } })
     val skillsState by skillsVm.state.collectAsStateWithLifecycle()
     var masteryUp by remember { mutableStateOf<SkillResult?>(null) }
+    val mindVm: MindViewModel = viewModel(factory = viewModelFactory { initializer { MindViewModel(mind) } })
+    val mindState by mindVm.state.collectAsStateWithLifecycle()
+
+    LaunchedEffect(mindVm) {
+        mindVm.events.collect { event ->
+            when (event) {
+                is MindEvent.LeveledUp -> levelUp = event.changes
+                is MindEvent.Result -> if (event.result.xp > 0) {
+                    launch { snackbar.showSnackbar("+${event.result.xp} ${MindRepository.STAT.displayName}", duration = SnackbarDuration.Short) }
+                }
+            }
+        }
+    }
 
     LaunchedEffect(skillsVm) {
         skillsVm.events.collect { event ->
@@ -314,6 +335,24 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                                 nav.navigate(Routes.quiz(session.all.map { it.id }, learn.map { it.id }))
                             },
                             onOpenPack = { nav.navigate(Routes.pack(it.id)) },
+                            extra = {
+                                mindSection(
+                                    mindState,
+                                    onSession = { nav.navigate(Routes.mind(mindState.sessionGames)) },
+                                    onGame = { nav.navigate(Routes.mind(listOf(it))) },
+                                )
+                            },
+                        )
+                    }
+                    composable(Routes.MIND, arguments = listOf(navArgument("games") { type = NavType.StringType })) { entry ->
+                        val games = remember(entry) {
+                            requireNotNull(entry.arguments?.getString("games")).split(',').map(MindGame::fromKey)
+                        }
+                        MindSessionScreen(
+                            games = games,
+                            state = mindState,
+                            onScored = mindVm::record,
+                            onClose = { nav.popBackStack() },
                         )
                     }
                     composable(Routes.PACK, arguments = listOf(navArgument("id") { type = NavType.StringType })) { entry ->

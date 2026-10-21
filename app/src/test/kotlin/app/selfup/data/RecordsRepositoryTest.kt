@@ -122,6 +122,8 @@ class MigrationTest {
                 SkillEventEntity(conceptId = "java.strings", kind = SkillEventKind.READ, epochDay = 0, atMillis = 0, correct = null, total = null),
             )
             assertEquals(1, migrated.skillDao().forConcept("java.strings").size)
+            migrated.mindDao().insert(MindScoreEntity(game = "reaction", score = 240.0, epochDay = 0, atMillis = 0, xpAwarded = 0))
+            assertEquals(1, migrated.mindDao().forGame("reaction").size)
         } finally {
             migrated.close()
         }
@@ -130,6 +132,7 @@ class MigrationTest {
     private fun SupportSQLiteDatabase.downgradeToV1() {
         execSQL("DROP TABLE record_entry")
         execSQL("DROP TABLE skill_event")
+        execSQL("DROP TABLE mind_score")
         version = 1
     }
 }
