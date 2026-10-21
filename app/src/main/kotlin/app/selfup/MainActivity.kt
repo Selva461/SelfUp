@@ -11,10 +11,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        val repository = (application as SelfUpApplication).repository
+        val app = application as SelfUpApplication
         setContent {
             SelfUpTheme {
-                SelfUpApp(repository)
+                SelfUpApp(app.repository, app.health)
             }
         }
     }

@@ -1,6 +1,7 @@
 package app.selfup
 
 import android.app.Application
+import app.selfup.data.HealthRepository
 import app.selfup.data.LifeRepository
 import app.selfup.data.ReminderInput
 import app.selfup.data.SelfUpDatabase
@@ -14,7 +15,11 @@ class SelfUpApplication : Application() {
     /** App-wide scope for work that must outlive any single screen. */
     val appScope = CoroutineScope(SupervisorJob())
 
-    val repository: LifeRepository by lazy { LifeRepository(SelfUpDatabase.create(this)) }
+    private val database by lazy { SelfUpDatabase.create(this) }
+
+    val repository: LifeRepository by lazy { LifeRepository(database) }
+
+    val health: HealthRepository by lazy { HealthRepository(database, repository.clock, repository.dayBoundary) }
 
     private val reminders by lazy { ReminderScheduler(this) }
 
