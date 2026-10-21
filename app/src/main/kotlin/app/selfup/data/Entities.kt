@@ -177,10 +177,22 @@ object SkillEventKind {
     const val TAUGHT = "taught"
 }
 
+/** One finished mind game. [score] is in the game's own unit (digits, N, per minute, cells, ms). */
+@Entity(tableName = "mind_score", indices = [Index("game")])
+data class MindScoreEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val game: String,
+    val score: Double,
+    val epochDay: Long,
+    val atMillis: Long,
+    val xpAwarded: Int,
+)
+
 object XpReason {
     const val COMPLETION = "completion"
     const val PENALTY = "penalty"
     const val UNDO = "undo"
     const val RECORD = "record"
     const val SKILL = "skill"
+    const val MIND = "mind"
 }
