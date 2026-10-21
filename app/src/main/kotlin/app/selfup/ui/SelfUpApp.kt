@@ -97,6 +97,7 @@ import app.selfup.ui.goals.AddGoalSheet
 import app.selfup.ui.goals.GoalsEvent
 import app.selfup.ui.goals.GoalsScreen
 import app.selfup.ui.goals.GoalsViewModel
+import app.selfup.ui.goals.ImportPlanSheet
 import app.selfup.ui.goals.planSection
 import app.selfup.ui.home.HomeScreen
 import app.selfup.ui.log.LogEvent
@@ -203,6 +204,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
     val goalsVm: GoalsViewModel = viewModel(factory = viewModelFactory { initializer { GoalsViewModel(goals) } })
     val goalsState by goalsVm.state.collectAsStateWithLifecycle()
     var addingGoal by remember { mutableStateOf(false) }
+    var importingPlan by remember { mutableStateOf(false) }
 
     LaunchedEffect(goalsVm) {
         goalsVm.events.collect { event ->
@@ -210,6 +212,12 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                 is GoalsEvent.Added -> launch {
                     haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                     val text = if (event.queued) "${event.title} is queued. It starts when a goal ends." else "${event.title} goal started"
+                    snackbar.showSnackbar(text, duration = SnackbarDuration.Short)
+                }
+                is GoalsEvent.Imported -> launch {
+                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                    val started = if (event.active == 1) "1 goal started" else "${event.active} goals started"
+                    val text = if (event.queued > 0) "$started, ${event.queued} queued" else started
                     snackbar.showSnackbar(text, duration = SnackbarDuration.Short)
                 }
             }
@@ -404,6 +412,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                         GoalsScreen(
                             overview = goalsState,
                             onAdd = { addingGoal = true },
+                            onImport = { importingPlan = true },
                             onMoveDeadline = { view, date -> goalsVm.moveDeadline(view.goal.id, date) },
                             onChangeTarget = { view, target -> goalsVm.changeTarget(view.goal.id, target) },
                             onReached = { goalsVm.markReached(it.goal.id) },
@@ -597,6 +606,18 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                 addingGoal = false
             },
             onDismiss = { addingGoal = false },
+        )
+    }
+
+    if (importingPlan) {
+        ImportPlanSheet(
+            activeCount = goalsState.active.size,
+            today = goalsVm.today(),
+            onImport = {
+                goalsVm.import(it)
+                importingPlan = false
+            },
+            onDismiss = { importingPlan = false },
         )
     }
 

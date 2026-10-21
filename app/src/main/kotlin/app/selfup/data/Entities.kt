@@ -202,6 +202,8 @@ data class GoalEntity(
     val deadlineEpochDay: Long,
     val state: String,
     val createdAtMillis: Long,
+    /** A written week from a plan code ([app.selfup.core.PlanCode.encodeWeek]); null uses the built-in plan. */
+    val plan: String? = null,
 )
 
 object GoalState {
