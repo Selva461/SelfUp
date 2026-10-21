@@ -180,6 +180,9 @@ interface SkillDao {
     @Query("SELECT * FROM skill_event ORDER BY epochDay, id")
     fun observeAll(): Flow<List<SkillEventEntity>>
 
+    @Query("SELECT * FROM skill_event ORDER BY epochDay, id")
+    suspend fun all(): List<SkillEventEntity>
+
     @Query("SELECT * FROM skill_event WHERE conceptId = :conceptId ORDER BY epochDay, id")
     suspend fun forConcept(conceptId: String): List<SkillEventEntity>
 
@@ -197,4 +200,25 @@ interface MindDao {
 
     @Insert
     suspend fun insert(score: MindScoreEntity): Long
+}
+
+@Dao
+interface GoalDao {
+    @Query("SELECT * FROM goal ORDER BY createdAtMillis, id")
+    fun observeAll(): Flow<List<GoalEntity>>
+
+    @Query("SELECT * FROM goal WHERE id = :id")
+    suspend fun get(id: Long): GoalEntity?
+
+    @Query("SELECT * FROM goal WHERE state = :state ORDER BY createdAtMillis, id")
+    suspend fun withState(state: String): List<GoalEntity>
+
+    @Insert
+    suspend fun insert(goal: GoalEntity): Long
+
+    @Update
+    suspend fun update(goal: GoalEntity)
+
+    @Query("DELETE FROM goal WHERE id = :id")
+    suspend fun delete(id: Long)
 }

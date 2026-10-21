@@ -87,7 +87,7 @@ class SkillsRepository(
     }
 }
 
-private fun SkillEventEntity.toDomain(): SkillEvent {
+internal fun SkillEventEntity.toDomain(): SkillEvent {
     val day = LocalDate.ofEpochDay(epochDay)
     return when (kind) {
         SkillEventKind.READ -> SkillEvent.Read(day)

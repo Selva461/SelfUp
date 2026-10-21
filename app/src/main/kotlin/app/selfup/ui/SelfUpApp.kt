@@ -63,15 +63,19 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import app.selfup.core.CompletionInput
+import app.selfup.core.GoalMeasure
+import app.selfup.core.GoalRules
 import app.selfup.core.Mastery
 import app.selfup.core.MindGame
 import app.selfup.core.PersonalBest
+import app.selfup.core.PlanAction
 import app.selfup.core.Quest
 import app.selfup.core.RecordKind
 import app.selfup.core.RecordMath
 import app.selfup.core.Stat
 import app.selfup.core.StatChange
 import app.selfup.core.packs.Packs
+import app.selfup.data.GoalsRepository
 import app.selfup.data.HealthRepository
 import app.selfup.data.LifeRepository
 import app.selfup.data.MindRepository
@@ -89,6 +93,11 @@ import app.selfup.ui.glass.GlassTab
 import app.selfup.ui.glass.GlassTabBar
 import app.selfup.ui.glass.GlassTabBarHeight
 import app.selfup.ui.glass.LocalGlassLayers
+import app.selfup.ui.goals.AddGoalSheet
+import app.selfup.ui.goals.GoalsEvent
+import app.selfup.ui.goals.GoalsScreen
+import app.selfup.ui.goals.GoalsViewModel
+import app.selfup.ui.goals.planSection
 import app.selfup.ui.home.HomeScreen
 import app.selfup.ui.log.LogEvent
 import app.selfup.ui.log.LogScreen
@@ -137,6 +146,7 @@ private object Routes {
     fun pack(id: String) = "pack/$id"
     fun concept(id: String) = "concept/$id"
     fun quiz(ids: List<String>, learn: List<String>) = "quiz/${ids.joinToString(",")}/${learn.joinToString(",").ifEmpty { "-" }}"
+    const val GOALS = "goals"
     const val MIND = "mind/{games}"
     fun mind(games: List<MindGame>) = "mind/${games.joinToString(",") { it.key }}"
     const val STAT = "stat/{key}"
@@ -150,7 +160,7 @@ private sealed interface Editing {
 }
 
 @Composable
-fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository) {
+fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository) {
     val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository) } })
     val state by game.state.collectAsStateWithLifecycle()
     val allQuests by game.allQuests.collectAsStateWithLifecycle()
@@ -189,6 +199,22 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
     var masteryUp by remember { mutableStateOf<SkillResult?>(null) }
     val mindVm: MindViewModel = viewModel(factory = viewModelFactory { initializer { MindViewModel(mind) } })
     val mindState by mindVm.state.collectAsStateWithLifecycle()
+
+    val goalsVm: GoalsViewModel = viewModel(factory = viewModelFactory { initializer { GoalsViewModel(goals) } })
+    val goalsState by goalsVm.state.collectAsStateWithLifecycle()
+    var addingGoal by remember { mutableStateOf(false) }
+
+    LaunchedEffect(goalsVm) {
+        goalsVm.events.collect { event ->
+            when (event) {
+                is GoalsEvent.Added -> launch {
+                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                    val text = if (event.queued) "${event.title} is queued. It starts when a goal ends." else "${event.title} goal started"
+                    snackbar.showSnackbar(text, duration = SnackbarDuration.Short)
+                }
+            }
+        }
+    }
 
     LaunchedEffect(mindVm) {
         mindVm.events.collect { event ->
@@ -317,6 +343,36 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                             onComplete = complete,
                             onEdit = edit,
                             onStatClick = { nav.navigate(Routes.stat(it)) },
+                            extra = {
+                                planSection(
+                                    goalsState,
+                                    onTask = { item ->
+                                        when (val action = item.task.action) {
+                                            is PlanAction.LogRecord -> recordSheet = action.kind
+                                            is PlanAction.Study -> Packs.pack(action.packId)?.let { pack ->
+                                                val session = skillsState.session(pack)
+                                                if (session.isEmpty) {
+                                                    nav.navigate(Routes.pack(pack.id))
+                                                } else {
+                                                    val learn = session.fresh.filter { skillsState.state(it).mastery == Mastery.UNSEEN }
+                                                    nav.navigate(Routes.quiz(session.all.map { it.id }, learn.map { it.id }))
+                                                }
+                                            }
+                                            PlanAction.MindSession -> {
+                                                val game = (goalsState.active.firstOrNull { it.goal.id == item.task.goalId }?.goal?.measure as? GoalMeasure.Mind)?.game
+                                                val games = when {
+                                                    game == null -> mindState.sessionGames
+                                                    item.task.isTest -> listOf(game)
+                                                    game in mindState.sessionGames -> mindState.sessionGames
+                                                    else -> mindState.sessionGames.dropLast(1) + game
+                                                }
+                                                nav.navigate(Routes.mind(games))
+                                            }
+                                        }
+                                    },
+                                    onGoals = { nav.navigate(Routes.GOALS) },
+                                )
+                            },
                         )
                     }
                     composable(Routes.QUESTS) {
@@ -342,6 +398,17 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                                     onGame = { nav.navigate(Routes.mind(listOf(it))) },
                                 )
                             },
+                        )
+                    }
+                    composable(Routes.GOALS) {
+                        GoalsScreen(
+                            overview = goalsState,
+                            onAdd = { addingGoal = true },
+                            onMoveDeadline = { view, date -> goalsVm.moveDeadline(view.goal.id, date) },
+                            onChangeTarget = { view, target -> goalsVm.changeTarget(view.goal.id, target) },
+                            onReached = { goalsVm.markReached(it.goal.id) },
+                            onDrop = { goalsVm.drop(it.goal.id) },
+                            onBack = { nav.popBackStack() },
                         )
                     }
                     composable(Routes.MIND, arguments = listOf(navArgument("games") { type = NavType.StringType })) { entry ->
@@ -517,6 +584,19 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                 editing = null
             },
             onDismiss = { editing = null },
+        )
+    }
+
+    if (addingGoal) {
+        AddGoalSheet(
+            best = { goalsVm.best(it.measure) },
+            queued = !GoalRules.canAdd(goalsState.active.size),
+            today = goalsVm.today(),
+            onAdd = { template, target, deadline ->
+                goalsVm.add(template, target, deadline)
+                addingGoal = false
+            },
+            onDismiss = { addingGoal = false },
         )
     }
 
