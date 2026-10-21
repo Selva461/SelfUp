@@ -141,6 +141,7 @@ private fun XpEventRow(event: XpEventEntity) {
                     XpReason.COMPLETION -> "Quest completed"
                     XpReason.PENALTY -> "Missed daily"
                     XpReason.UNDO -> "Undone"
+                    XpReason.RECORD -> "Personal best"
                     else -> event.reason
                 },
                 style = MaterialTheme.typography.bodyMedium,

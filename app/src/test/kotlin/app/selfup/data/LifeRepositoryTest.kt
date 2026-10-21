@@ -290,6 +290,21 @@ class LifeRepositoryTest {
         repo.closeFinishedDays()
         assertEquals(0, repo.observeAllQuests().first().count { it.penaltyFor == gym })
     }
+
+    @Test
+    fun testDayQuestAppearsOnFirstSaturdayAndIsRemovedAfter() = runTest {
+        val testDay = LocalDate.of(2026, 11, 7)
+        clock.set(testDay.atTime(10, 0).atZone(zone).toInstant())
+        repo.closeFinishedDays()
+        repo.closeFinishedDays() // idempotent: still one quest
+        val onTheDay = repo.observeAllQuests().first().filter { it.title.startsWith("Test day") }
+        assertEquals(1, onTheDay.size)
+        assertTrue(onTheDay.single().schedule.isDueOn(testDay))
+
+        clock.set(testDay.plusDays(1).atTime(10, 0).atZone(zone).toInstant())
+        repo.closeFinishedDays()
+        assertTrue(repo.observeAllQuests().first().none { it.title.startsWith("Test day") })
+    }
 }
 
 private class MutableClock(private var now: Instant, private val zone: ZoneId) : Clock() {

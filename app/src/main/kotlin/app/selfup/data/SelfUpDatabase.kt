@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [
@@ -14,8 +16,9 @@ import androidx.room.RoomDatabase
         MetaEntity::class,
         MealLogEntity::class,
         GasLogEntity::class,
+        RecordEntryEntity::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class SelfUpDatabase : RoomDatabase() {
@@ -24,9 +27,28 @@ abstract class SelfUpDatabase : RoomDatabase() {
     abstract fun xpDao(): XpDao
     abstract fun metaDao(): MetaDao
     abstract fun healthDao(): HealthDao
+    abstract fun recordDao(): RecordDao
 
     companion object {
         fun create(context: Context): SelfUpDatabase =
-            Room.databaseBuilder(context, SelfUpDatabase::class.java, "selfup.db").build()
+            Room.databaseBuilder(context, SelfUpDatabase::class.java, "selfup.db")
+                .addMigrations(*MIGRATIONS)
+                .build()
+
+        /** v1 shipped with the first APK, so every schema change from here on needs a migration. */
+        val MIGRATIONS: Array<Migration> = arrayOf(
+            object : Migration(1, 2) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `record_entry` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                            "`kind` TEXT NOT NULL, `atMillis` INTEGER NOT NULL, `weightKg` REAL, `reps` INTEGER, " +
+                            "`seconds` INTEGER, `distanceKm` REAL, `xpAwarded` INTEGER NOT NULL)",
+                    )
+                    db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS `index_record_entry_kind_atMillis` ON `record_entry` (`kind`, `atMillis`)",
+                    )
+                }
+            },
+        )
     }
 }

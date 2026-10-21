@@ -29,6 +29,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -61,11 +62,16 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import app.selfup.core.CompletionInput
+import app.selfup.core.PersonalBest
 import app.selfup.core.Quest
+import app.selfup.core.RecordKind
+import app.selfup.core.RecordMath
 import app.selfup.core.Stat
 import app.selfup.core.StatChange
 import app.selfup.data.HealthRepository
 import app.selfup.data.LifeRepository
+import app.selfup.data.RecordsRepository
+import app.selfup.ui.components.CelebrationOverlay
 import app.selfup.ui.components.LevelUpOverlay
 import app.selfup.ui.components.NumberEntryDialog
 import app.selfup.ui.glass.AmbientBackground
@@ -82,6 +88,11 @@ import app.selfup.ui.log.LogScreen
 import app.selfup.ui.log.LogViewModel
 import app.selfup.ui.quests.QuestEditorSheet
 import app.selfup.ui.quests.QuestsScreen
+import app.selfup.ui.records.RecordFormat
+import app.selfup.ui.records.RecordLogSheet
+import app.selfup.ui.records.RecordsEvent
+import app.selfup.ui.records.RecordsScreen
+import app.selfup.ui.records.RecordsViewModel
 import app.selfup.ui.stat.StatDetailScreen
 import app.selfup.ui.stat.StatDetailViewModel
 import dev.chrisbanes.haze.HazeState
@@ -91,6 +102,7 @@ import kotlinx.coroutines.launch
 private val Tabs = listOf(
     GlassTab(Routes.HOME, "Today", Icons.Filled.Home),
     GlassTab(Routes.QUESTS, "Quests", Icons.AutoMirrored.Filled.List),
+    GlassTab(Routes.RECORDS, "Records", Icons.Filled.Star),
     GlassTab(Routes.LOG, "Log", Icons.Filled.Edit),
 )
 
@@ -98,6 +110,7 @@ private object Routes {
     const val HOME = "home"
     const val QUESTS = "quests"
     const val LOG = "log"
+    const val RECORDS = "records"
     const val STAT = "stat/{key}"
     fun stat(stat: Stat) = "stat/${stat.key}"
 }
@@ -109,7 +122,7 @@ private sealed interface Editing {
 }
 
 @Composable
-fun SelfUpApp(repository: LifeRepository, health: HealthRepository) {
+fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository) {
     val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository) } })
     val state by game.state.collectAsStateWithLifecycle()
     val allQuests by game.allQuests.collectAsStateWithLifecycle()
@@ -137,6 +150,36 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository) {
     var editing by remember { mutableStateOf<Editing?>(null) }
     var logging by remember { mutableStateOf<Pair<Quest, Double?>?>(null) }
     var levelUp by remember { mutableStateOf<List<StatChange>?>(null) }
+    var recordSheet by remember { mutableStateOf<RecordKind?>(null) }
+    var newBest by remember { mutableStateOf<Pair<RecordKind, PersonalBest>?>(null) }
+    val recordsVm: RecordsViewModel = viewModel(
+        factory = viewModelFactory { initializer { RecordsViewModel(records, repository::today) } },
+    )
+    val recordsState by recordsVm.state.collectAsStateWithLifecycle()
+
+    LaunchedEffect(recordsVm) {
+        recordsVm.events.collect { event ->
+            when (event) {
+                is RecordsEvent.LeveledUp -> levelUp = event.changes
+                is RecordsEvent.Logged -> {
+                    val best = event.personalBests.firstOrNull()
+                    if (best != null) {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        newBest = event.kind to best
+                    }
+                    launch {
+                        val text = if (best != null) {
+                            "New ${event.kind.displayName} best  +${RecordMath.PR_XP} ${event.kind.stat.displayName}"
+                        } else {
+                            "Logged ${event.kind.displayName}"
+                        }
+                        val result = snackbar.showSnackbar(text, actionLabel = "Undo", duration = SnackbarDuration.Short)
+                        if (result == SnackbarResult.ActionPerformed) recordsVm.delete(event.entryId)
+                    }
+                }
+            }
+        }
+    }
 
     LaunchedEffect(game) {
         game.events.collect { event ->
@@ -174,7 +217,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository) {
     val edit: (Quest) -> Unit = { editing = Editing.Existing(it) }
 
     val layers = remember { GlassLayers(backdrop = HazeState(), chrome = HazeState()) }
-    val onTab = route == Routes.HOME || route == Routes.QUESTS || route == Routes.LOG
+    val onTab = route == Routes.HOME || route == Routes.QUESTS || route == Routes.RECORDS || route == Routes.LOG
 
     CompositionLocalProvider(LocalGlassLayers provides layers) {
         Box(Modifier.fillMaxSize()) {
@@ -215,6 +258,9 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository) {
                     }
                     composable(Routes.QUESTS) {
                         QuestsScreen(state, allQuests, padding, onComplete = complete, onEdit = edit)
+                    }
+                    composable(Routes.RECORDS) {
+                        RecordsScreen(recordsState, padding, onOpen = { recordSheet = it })
                     }
                     composable(Routes.LOG) {
                         val log: LogViewModel = viewModel(factory = viewModelFactory { initializer { LogViewModel(health) } })
@@ -293,6 +339,18 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository) {
                 }
             }
 
+            newBest?.let { (kind, best) ->
+                val headline = RecordFormat.metric(best.metric, best.value)
+                CelebrationOverlay(
+                    label = "NEW RECORD",
+                    headline = headline.substringBefore(' '),
+                    message = "${kind.displayName} · ${best.metric.displayName.lowercase()} ${headline.substringAfter(' ', "")}\n" +
+                        "was ${RecordFormat.metric(best.metric, best.previous)}",
+                    accent = kind.stat.color,
+                    key = best,
+                    onDismiss = { newBest = null },
+                )
+            }
             levelUp?.let { changes -> LevelUpOverlay(changes, onDismiss = { levelUp = null }) }
         }
     }
@@ -309,6 +367,19 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository) {
                 editing = null
             },
             onDismiss = { editing = null },
+        )
+    }
+
+    recordSheet?.let { kind ->
+        RecordLogSheet(
+            kind = kind,
+            summary = recordsState.summaries.firstOrNull { it.kind == kind },
+            onSave = { weight, reps, seconds, distance ->
+                recordsVm.log(kind, weight, reps, seconds, distance)
+                recordSheet = null
+            },
+            onDelete = recordsVm::delete,
+            onDismiss = { recordSheet = null },
         )
     }
 

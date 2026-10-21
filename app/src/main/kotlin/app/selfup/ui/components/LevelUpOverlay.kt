@@ -48,8 +48,28 @@ import kotlinx.coroutines.delay
  */
 @Composable
 fun LevelUpOverlay(changes: List<StatChange>, onDismiss: () -> Unit) {
+    CelebrationOverlay(
+        label = "LEVEL UP",
+        headline = "Lv ${changes.maxOf { it.levelAfter }}",
+        message = levelUpMessage(changes),
+        accent = changes.first().stat.color,
+        key = changes,
+        onDismiss = onDismiss,
+    )
+}
+
+/** A glass card with a burst of light, for the moments worth stopping for. */
+@Composable
+fun CelebrationOverlay(
+    label: String,
+    headline: String,
+    message: String,
+    accent: Color,
+    key: Any,
+    onDismiss: () -> Unit,
+) {
     val visible = remember { MutableTransitionState(false).apply { targetState = true } }
-    LaunchedEffect(changes) {
+    LaunchedEffect(key) {
         delay(2_400)
         visible.targetState = false
     }
@@ -57,7 +77,6 @@ fun LevelUpOverlay(changes: List<StatChange>, onDismiss: () -> Unit) {
         if (!visible.targetState && visible.isIdle) onDismiss()
     }
 
-    val accent = changes.first().stat.color
     // A one-shot burst of light behind the card: expands and fades as the card lands.
     val burst = remember { Animatable(0f) }
     LaunchedEffect(Unit) { burst.animateTo(1f, tween(durationMillis = 1_400, easing = FastOutSlowInEasing)) }
@@ -98,17 +117,17 @@ fun LevelUpOverlay(changes: List<StatChange>, onDismiss: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    "LEVEL UP",
+                    label,
                     style = SectionLabel,
                     color = accent,
                     letterSpacing = 3.sp,
                 )
                 Text(
-                    "Lv ${changes.maxOf { it.levelAfter }}",
+                    headline,
                     style = MaterialTheme.typography.displayLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                Text(levelUpMessage(changes), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
+                Text(message, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
             }
         }
     }

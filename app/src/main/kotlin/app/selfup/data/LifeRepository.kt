@@ -10,6 +10,7 @@ import app.selfup.core.Schedule
 import app.selfup.core.Stat
 import app.selfup.core.StatChange
 import app.selfup.core.StatProgress
+import app.selfup.core.TestDay
 import app.selfup.core.XpRules
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -246,6 +247,7 @@ class LifeRepository(
      */
     suspend fun closeFinishedDays(): DayCloseReport = db.withTransaction {
         val today = today()
+        refreshTestDayQuest(today)
         val yesterday = today.minusDays(1)
         val lastClosed = meta.get(LAST_CLOSED_DAY_KEY)?.toLong()?.let(LocalDate::ofEpochDay)
         // Never move the marker backwards (e.g. after a clock change), or days would be penalized twice.
@@ -294,6 +296,22 @@ class LifeRepository(
         DayCloseReport(missedYesterday, xpLost)
     }
 
+    /**
+     * On the first Saturday of the month, adds that day's Test day quest; afterwards removes
+     * it so old Test days don't pile up in the quest list. Earned XP stays in the ledger.
+     */
+    private suspend fun refreshTestDayQuest(today: LocalDate) {
+        val stored = meta.get(TEST_DAY_KEY)?.split(':')?.let { (day, id) -> LocalDate.ofEpochDay(day.toLong()) to id.toLong() }
+        if (stored != null && stored.first.isBefore(today)) {
+            quests.delete(stored.second)
+            meta.delete(TEST_DAY_KEY)
+        }
+        if (TestDay.isTestDay(today) && stored?.first != today) {
+            val id = saveQuest(TestDay.quest(today))
+            meta.put(MetaEntity(TEST_DAY_KEY, "${today.toEpochDay()}:$id"))
+        }
+    }
+
     /** Seeds the default quests once per install, so deleting them all doesn't bring them back. */
     suspend fun seedDefaultsOnce() = db.withTransaction {
         if (meta.get(SEEDED_KEY) != null) return@withTransaction
@@ -309,5 +327,6 @@ class LifeRepository(
     private companion object {
         const val SEEDED_KEY = "seeded_default_quests"
         const val LAST_CLOSED_DAY_KEY = "last_closed_quest_day"
+        const val TEST_DAY_KEY = "test_day_quest"
     }
 }
