@@ -188,6 +188,29 @@ data class MindScoreEntity(
     val xpAwarded: Int,
 )
 
+/**
+ * A goal. [measure] is a [app.selfup.core.GoalMeasure.key]; [state] is one of [GoalState].
+ * Only [GoalState.ACTIVE] goals get tasks; at most three are active at once.
+ */
+@Entity(tableName = "goal")
+data class GoalEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val measure: String,
+    val target: Double,
+    val baseline: Double?,
+    val startEpochDay: Long,
+    val deadlineEpochDay: Long,
+    val state: String,
+    val createdAtMillis: Long,
+)
+
+object GoalState {
+    const val ACTIVE = "active"
+    const val QUEUED = "queued"
+    const val REACHED = "reached"
+    const val DROPPED = "dropped"
+}
+
 object XpReason {
     const val COMPLETION = "completion"
     const val PENALTY = "penalty"
@@ -195,4 +218,5 @@ object XpReason {
     const val RECORD = "record"
     const val SKILL = "skill"
     const val MIND = "mind"
+    const val GOAL = "goal"
 }

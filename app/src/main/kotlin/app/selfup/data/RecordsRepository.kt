@@ -103,7 +103,7 @@ class RecordsRepository(
     }
 }
 
-private fun RecordEntryEntity.toDomain() = RecordEntry(
+internal fun RecordEntryEntity.toDomain() = RecordEntry(
     kind = RecordKind.fromKey(kind),
     at = Instant.ofEpochMilli(atMillis),
     weightKg = weightKg,

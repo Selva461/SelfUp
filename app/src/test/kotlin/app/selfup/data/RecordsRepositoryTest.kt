@@ -124,6 +124,10 @@ class MigrationTest {
             assertEquals(1, migrated.skillDao().forConcept("java.strings").size)
             migrated.mindDao().insert(MindScoreEntity(game = "reaction", score = 240.0, epochDay = 0, atMillis = 0, xpAwarded = 0))
             assertEquals(1, migrated.mindDao().forGame("reaction").size)
+            migrated.goalDao().insert(
+                GoalEntity(measure = "mind:reaction", target = 220.0, baseline = null, startEpochDay = 0, deadlineEpochDay = 60, state = GoalState.ACTIVE, createdAtMillis = 0),
+            )
+            assertEquals(1, migrated.goalDao().withState(GoalState.ACTIVE).size)
         } finally {
             migrated.close()
         }
@@ -133,6 +137,7 @@ class MigrationTest {
         execSQL("DROP TABLE record_entry")
         execSQL("DROP TABLE skill_event")
         execSQL("DROP TABLE mind_score")
+        execSQL("DROP TABLE goal")
         version = 1
     }
 }

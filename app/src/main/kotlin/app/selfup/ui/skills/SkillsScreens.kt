@@ -247,7 +247,7 @@ fun PrimaryButton(text: String, accent: Color, onClick: () -> Unit, enabled: Boo
 }
 
 @Composable
-private fun BackScaffold(title: String, onBack: () -> Unit, content: @Composable (PaddingValues) -> Unit) {
+internal fun BackScaffold(title: String, onBack: () -> Unit, content: @Composable (PaddingValues) -> Unit) {
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {

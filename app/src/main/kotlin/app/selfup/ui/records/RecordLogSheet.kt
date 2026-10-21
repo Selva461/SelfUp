@@ -228,7 +228,7 @@ private fun Preview(kind: RecordKind, draft: RecordEntry?, isBest: Boolean, summ
 
 /** A value with − and + buttons. Holding a button repeats, faster the longer it's held. */
 @Composable
-private fun Stepper(label: String, value: String, accent: Color, onMinus: () -> Unit, onPlus: () -> Unit) {
+internal fun Stepper(label: String, value: String, accent: Color, onMinus: () -> Unit, onPlus: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()

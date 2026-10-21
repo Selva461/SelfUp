@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
@@ -43,6 +44,7 @@ fun HomeScreen(
     onComplete: (Quest) -> Unit,
     onEdit: (Quest) -> Unit,
     onStatClick: (Stat) -> Unit,
+    extra: LazyListScope.() -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -56,6 +58,7 @@ fun HomeScreen(
     ) {
         item(key = "title") { LargeTitle("Today", eyebrow = state.day?.format(eyebrowFormat)) }
         item(key = "hero") { Hero(state) }
+        extra()
         // Two stat tiles per row.
         items(state.stats.chunked(2), key = { pair -> pair.joinToString { it.stat.key } }) { pair ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
