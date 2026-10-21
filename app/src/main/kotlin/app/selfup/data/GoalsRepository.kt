@@ -7,13 +7,16 @@ import app.selfup.core.GoalMeasure
 import app.selfup.core.GoalPlanner
 import app.selfup.core.GoalRules
 import app.selfup.core.GoalStatus
+import app.selfup.core.ImportedGoal
 import app.selfup.core.Mastery
 import app.selfup.core.Metric
 import app.selfup.core.PlanAction
+import app.selfup.core.PlanCode
 import app.selfup.core.PlanTask
 import app.selfup.core.RecordEntry
 import app.selfup.core.RecordMath
 import app.selfup.core.SkillRules
+import app.selfup.core.WeeklyPlan
 import app.selfup.core.packs.Packs
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -82,7 +85,7 @@ class GoalsRepository(
     }
 
     /** Adds a goal; it's active if fewer than three are, otherwise it waits in the queue. */
-    suspend fun add(measure: GoalMeasure, target: Double, deadline: LocalDate): AddGoalResult = db.withTransaction {
+    suspend fun add(measure: GoalMeasure, target: Double, deadline: LocalDate, plan: WeeklyPlan? = null): AddGoalResult = db.withTransaction {
         val today = today()
         val active = goals.withState(GoalState.ACTIVE).size
         val baseline = freshBaseline(measure, today)
@@ -96,9 +99,16 @@ class GoalsRepository(
                 deadlineEpochDay = deadline.toEpochDay(),
                 state = state,
                 createdAtMillis = clock.millis(),
+                plan = plan?.let(PlanCode::encodeWeek),
             ),
         )
         if (state == GoalState.ACTIVE) AddGoalResult.Active(id) else AddGoalResult.Queued(id)
+    }
+
+    /** Adds every goal from a plan code, in order; past three active, the rest queue. */
+    suspend fun import(goals: List<ImportedGoal>): List<AddGoalResult> = db.withTransaction {
+        val today = today()
+        goals.map { add(it.measure, it.target, today.plusWeeks(it.weeks.toLong()), it.plan) }
     }
 
     suspend fun moveDeadline(id: Long, deadline: LocalDate) = edit(id) { it.copy(deadlineEpochDay = deadline.toEpochDay()) }
@@ -189,6 +199,7 @@ class GoalsRepository(
             start = start,
             deadline = LocalDate.ofEpochDay(row.deadlineEpochDay),
             baseline = baseline,
+            plan = row.plan?.let(PlanCode::parseWeek),
         )
         val current = current(goal, values) ?: baseline
         val status = GoalRules.status(goal, current, today)

@@ -3,6 +3,7 @@ package app.selfup.ui.goals
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.selfup.core.GoalMeasure
+import app.selfup.core.ImportedGoal
 import app.selfup.core.Metric
 import app.selfup.core.MindGame
 import app.selfup.core.RecordKind
@@ -21,6 +22,7 @@ import java.time.LocalDate
 
 sealed interface GoalsEvent {
     data class Added(val title: String, val queued: Boolean) : GoalsEvent
+    data class Imported(val active: Int, val queued: Int) : GoalsEvent
 }
 
 class GoalsViewModel(private val goals: GoalsRepository) : ViewModel() {
@@ -38,6 +40,14 @@ class GoalsViewModel(private val goals: GoalsRepository) : ViewModel() {
         viewModelScope.launch {
             val result = goals.add(template.measure, target, deadline)
             _events.send(GoalsEvent.Added(template.name, queued = result is AddGoalResult.Queued))
+        }
+    }
+
+    fun import(imported: List<ImportedGoal>) {
+        viewModelScope.launch {
+            val results = goals.import(imported)
+            val queued = results.count { it is AddGoalResult.Queued }
+            _events.send(GoalsEvent.Imported(active = results.size - queued, queued = queued))
         }
     }
 

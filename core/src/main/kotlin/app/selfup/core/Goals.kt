@@ -68,6 +68,8 @@ public data class Goal(
     val start: LocalDate,
     val deadline: LocalDate,
     val baseline: Double? = null,
+    /** A written plan (from a plan code) that replaces the built-in training tasks. */
+    val plan: WeeklyPlan? = null,
 ) {
     init {
         require(deadline.isAfter(start)) { "The deadline must be after the start" }
@@ -266,7 +268,12 @@ public object GoalPlanner {
             val expected = GoalRules.expected(goal, date)?.let { format(goal.measure, GoalRules.round(goal.measure, it)) }
             tasks += PlanTask(goal.id, "Checkpoint: ${testName(goal.measure)}", "Week ${GoalRules.weekIndex(goal, date) + 1} test. On the line: $expected.", action, isTest = true)
         }
-        tasks += training(goal, current, date, checkpoint)
+        val written = goal.plan
+        tasks += if (written != null) {
+            written.on(date.dayOfWeek).map { PlanTask(goal.id, it.title, it.detail, action) }
+        } else {
+            training(goal, current, date, checkpoint)
+        }
         return tasks.take(GoalRules.TASKS_PER_DAY)
     }
 

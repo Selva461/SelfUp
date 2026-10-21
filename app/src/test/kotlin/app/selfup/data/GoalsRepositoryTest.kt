@@ -10,6 +10,8 @@ import app.selfup.core.GoalStatus
 import app.selfup.core.Metric
 import app.selfup.core.MindGame
 import app.selfup.core.PlanAction
+import app.selfup.core.PlanCode
+import app.selfup.core.PlanCodeResult
 import app.selfup.core.RecordKind
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -122,5 +124,21 @@ class GoalsRepositoryTest {
         assertEquals(goals.today(), promoted.goal.start)
         assertEquals(goals.today().plusWeeks(6), promoted.goal.deadline)
         assertNull(promoted.goal.baseline)
+    }
+
+    @Test
+    fun anImportedPlanReplacesTheBuiltInTasks() = runTest {
+        val code = "SELFUP PLAN 1\nGOAL record:bench:EST_1RM 80 12w\nMON Bench 5x5 at 60 kg | Log the top set"
+        val imported = (PlanCode.parse(code) as PlanCodeResult.Ok).goals
+        val results = goals.import(imported)
+        assertTrue(results.single() is AddGoalResult.Active)
+        val view = goals.observe().first().active.single()
+        // No recent bench record, so the baseline test comes first.
+        assertTrue(view.tasks.single().task.isTest)
+        records.log(RecordKind.BENCH, weightKg = 60.0, reps = 5)
+        val after = goals.observe().first().active.single()
+        assertEquals("Bench 5x5 at 60 kg", after.tasks.single().task.title)
+        assertTrue(after.tasks.single().done)
+        assertEquals(goals.today().plusWeeks(12), after.goal.deadline)
     }
 }

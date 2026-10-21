@@ -163,6 +163,7 @@ private fun Pill(text: String, color: Color) {
 fun GoalsScreen(
     overview: GoalsOverview,
     onAdd: () -> Unit,
+    onImport: () -> Unit,
     onMoveDeadline: (GoalView, LocalDate) -> Unit,
     onChangeTarget: (GoalView, Double) -> Unit,
     onReached: (GoalView) -> Unit,
@@ -194,6 +195,15 @@ fun GoalsScreen(
                 val full = !GoalRules.canAdd(overview.active.size)
                 Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     PrimaryButton(if (full) "Add to the queue" else "Add a goal", MaterialTheme.colorScheme.primary, onAdd)
+                    Text(
+                        "Import a plan from Claude",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .clickable(role = Role.Button, onClick = onImport)
+                            .padding(10.dp),
+                    )
                     if (full) {
                         Text(
                             "Three goals is the limit, so each one gets real attention. New goals wait and start when one ends.",
