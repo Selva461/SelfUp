@@ -155,9 +155,32 @@ data class RecordEntryEntity(
     val xpAwarded: Int,
 )
 
+/**
+ * One thing that happened to a concept: read its card, took its quiz, finished its task or
+ * explained it. Mastery is replayed from these, so the history is the source of truth.
+ */
+@Entity(tableName = "skill_event", indices = [Index("conceptId")])
+data class SkillEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val conceptId: String,
+    val kind: String,
+    val epochDay: Long,
+    val atMillis: Long,
+    val correct: Int?,
+    val total: Int?,
+)
+
+object SkillEventKind {
+    const val READ = "read"
+    const val QUIZ = "quiz"
+    const val APPLIED = "applied"
+    const val TAUGHT = "taught"
+}
+
 object XpReason {
     const val COMPLETION = "completion"
     const val PENALTY = "penalty"
     const val UNDO = "undo"
     const val RECORD = "record"
+    const val SKILL = "skill"
 }

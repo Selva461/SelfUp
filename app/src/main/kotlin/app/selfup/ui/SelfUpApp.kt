@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Star
@@ -62,15 +63,19 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import app.selfup.core.CompletionInput
+import app.selfup.core.Mastery
 import app.selfup.core.PersonalBest
 import app.selfup.core.Quest
 import app.selfup.core.RecordKind
 import app.selfup.core.RecordMath
 import app.selfup.core.Stat
 import app.selfup.core.StatChange
+import app.selfup.core.packs.Packs
 import app.selfup.data.HealthRepository
 import app.selfup.data.LifeRepository
 import app.selfup.data.RecordsRepository
+import app.selfup.data.SkillResult
+import app.selfup.data.SkillsRepository
 import app.selfup.ui.components.CelebrationOverlay
 import app.selfup.ui.components.LevelUpOverlay
 import app.selfup.ui.components.NumberEntryDialog
@@ -93,9 +98,15 @@ import app.selfup.ui.records.RecordLogSheet
 import app.selfup.ui.records.RecordsEvent
 import app.selfup.ui.records.RecordsScreen
 import app.selfup.ui.records.RecordsViewModel
-import app.selfup.ui.theme.color
+import app.selfup.ui.skills.ConceptScreen
+import app.selfup.ui.skills.PackScreen
+import app.selfup.ui.skills.QuizScreen
+import app.selfup.ui.skills.SkillsEvent
+import app.selfup.ui.skills.SkillsScreen
+import app.selfup.ui.skills.SkillsViewModel
 import app.selfup.ui.stat.StatDetailScreen
 import app.selfup.ui.stat.StatDetailViewModel
+import app.selfup.ui.theme.color
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.launch
@@ -104,6 +115,7 @@ private val Tabs = listOf(
     GlassTab(Routes.HOME, "Today", Icons.Filled.Home),
     GlassTab(Routes.QUESTS, "Quests", Icons.AutoMirrored.Filled.List),
     GlassTab(Routes.RECORDS, "Records", Icons.Filled.Star),
+    GlassTab(Routes.SKILLS, "Skills", Icons.Filled.Build),
     GlassTab(Routes.LOG, "Log", Icons.Filled.Edit),
 )
 
@@ -112,6 +124,13 @@ private object Routes {
     const val QUESTS = "quests"
     const val LOG = "log"
     const val RECORDS = "records"
+    const val SKILLS = "skills"
+    const val PACK = "pack/{id}"
+    const val CONCEPT = "concept/{id}"
+    const val QUIZ = "quiz/{ids}/{learn}"
+    fun pack(id: String) = "pack/$id"
+    fun concept(id: String) = "concept/$id"
+    fun quiz(ids: List<String>, learn: List<String>) = "quiz/${ids.joinToString(",")}/${learn.joinToString(",").ifEmpty { "-" }}"
     const val STAT = "stat/{key}"
     fun stat(stat: Stat) = "stat/${stat.key}"
 }
@@ -123,7 +142,7 @@ private sealed interface Editing {
 }
 
 @Composable
-fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository) {
+fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository) {
     val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository) } })
     val state by game.state.collectAsStateWithLifecycle()
     val allQuests by game.allQuests.collectAsStateWithLifecycle()
@@ -157,6 +176,28 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
         factory = viewModelFactory { initializer { RecordsViewModel(records, repository::today) } },
     )
     val recordsState by recordsVm.state.collectAsStateWithLifecycle()
+    val skillsVm: SkillsViewModel = viewModel(factory = viewModelFactory { initializer { SkillsViewModel(skills) } })
+    val skillsState by skillsVm.state.collectAsStateWithLifecycle()
+    var masteryUp by remember { mutableStateOf<SkillResult?>(null) }
+
+    LaunchedEffect(skillsVm) {
+        skillsVm.events.collect { event ->
+            when (event) {
+                is SkillsEvent.LeveledUp -> levelUp = event.changes
+                is SkillsEvent.Result -> {
+                    val result = event.result
+                    if (result.masteryUp && result.after.level >= Mastery.SOLID.level) {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        masteryUp = result
+                    }
+                    if (result.xp > 0) {
+                        val stat = Packs.packOf(result.conceptId)?.stat
+                        launch { snackbar.showSnackbar("+${result.xp} ${stat?.displayName.orEmpty()}", duration = SnackbarDuration.Short) }
+                    }
+                }
+            }
+        }
+    }
 
     LaunchedEffect(recordsVm) {
         recordsVm.events.collect { event ->
@@ -218,7 +259,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
     val edit: (Quest) -> Unit = { editing = Editing.Existing(it) }
 
     val layers = remember { GlassLayers(backdrop = HazeState(), chrome = HazeState()) }
-    val onTab = route == Routes.HOME || route == Routes.QUESTS || route == Routes.RECORDS || route == Routes.LOG
+    val onTab = route == Routes.HOME || route == Routes.QUESTS || route == Routes.RECORDS || route == Routes.SKILLS || route == Routes.LOG
 
     CompositionLocalProvider(LocalGlassLayers provides layers) {
         Box(Modifier.fillMaxSize()) {
@@ -262,6 +303,64 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                     }
                     composable(Routes.RECORDS) {
                         RecordsScreen(recordsState, padding, onOpen = { recordSheet = it })
+                    }
+                    composable(Routes.SKILLS) {
+                        SkillsScreen(
+                            skillsState,
+                            padding,
+                            onStart = { pack ->
+                                val session = skillsState.session(pack)
+                                val learn = session.fresh.filter { skillsState.state(it).mastery == Mastery.UNSEEN }
+                                nav.navigate(Routes.quiz(session.all.map { it.id }, learn.map { it.id }))
+                            },
+                            onOpenPack = { nav.navigate(Routes.pack(it.id)) },
+                        )
+                    }
+                    composable(Routes.PACK, arguments = listOf(navArgument("id") { type = NavType.StringType })) { entry ->
+                        val pack = Packs.pack(requireNotNull(entry.arguments?.getString("id")))
+                        if (pack != null) {
+                            PackScreen(pack, skillsState, onConcept = { nav.navigate(Routes.concept(it.id)) }, onBack = { nav.popBackStack() })
+                        }
+                    }
+                    composable(Routes.CONCEPT, arguments = listOf(navArgument("id") { type = NavType.StringType })) { entry ->
+                        val id = requireNotNull(entry.arguments?.getString("id"))
+                        val concept = Packs.concept(id)
+                        val pack = Packs.packOf(id)
+                        if (concept != null && pack != null) {
+                            ConceptScreen(
+                                concept = concept,
+                                pack = pack,
+                                state = skillsState,
+                                onQuiz = {
+                                    val learn = if (skillsState.state(concept).mastery == Mastery.UNSEEN) listOf(id) else emptyList()
+                                    nav.navigate(Routes.quiz(listOf(id), learn))
+                                },
+                                onRead = { skillsVm.read(id) },
+                                onApplied = { skillsVm.applied(id) },
+                                onTaught = { skillsVm.taught(id) },
+                                onBack = { nav.popBackStack() },
+                            )
+                        }
+                    }
+                    composable(
+                        Routes.QUIZ,
+                        arguments = listOf(
+                            navArgument("ids") { type = NavType.StringType },
+                            navArgument("learn") { type = NavType.StringType },
+                        ),
+                    ) { entry ->
+                        val ids = requireNotNull(entry.arguments?.getString("ids")).split(',')
+                        val learn = requireNotNull(entry.arguments?.getString("learn")).split(',').filter { it != "-" }.toSet()
+                        val concepts = remember(ids) { ids.mapNotNull { Packs.concept(it) } }
+                        val accent = Packs.packOf(ids.first())?.stat?.color ?: Color.White
+                        QuizScreen(
+                            concepts = concepts,
+                            learnFirst = learn,
+                            accent = accent,
+                            onRead = { skillsVm.read(it.id) },
+                            onScored = { concept, correct, total -> skillsVm.quiz(concept.id, correct, total) },
+                            onClose = { nav.popBackStack() },
+                        )
                     }
                     composable(Routes.LOG) {
                         val log: LogViewModel = viewModel(factory = viewModelFactory { initializer { LogViewModel(health) } })
@@ -350,6 +449,17 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                     accent = kind.stat.color,
                     key = best,
                     onDismiss = { newBest = null },
+                )
+            }
+            masteryUp?.let { result ->
+                val concept = Packs.concept(result.conceptId)
+                CelebrationOverlay(
+                    label = "MASTERY UP",
+                    headline = result.after.displayName,
+                    message = "${concept?.title.orEmpty()}\n${result.after.howToEarn}: done",
+                    accent = Packs.packOf(result.conceptId)?.stat?.color ?: Color.White,
+                    key = result,
+                    onDismiss = { masteryUp = null },
                 )
             }
             levelUp?.let { changes -> LevelUpOverlay(changes, onDismiss = { levelUp = null }) }

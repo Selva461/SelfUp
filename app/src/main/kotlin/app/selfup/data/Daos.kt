@@ -174,3 +174,15 @@ interface RecordDao {
     @Query("DELETE FROM record_entry WHERE id = :id")
     suspend fun delete(id: Long)
 }
+
+@Dao
+interface SkillDao {
+    @Query("SELECT * FROM skill_event ORDER BY epochDay, id")
+    fun observeAll(): Flow<List<SkillEventEntity>>
+
+    @Query("SELECT * FROM skill_event WHERE conceptId = :conceptId ORDER BY epochDay, id")
+    suspend fun forConcept(conceptId: String): List<SkillEventEntity>
+
+    @Insert
+    suspend fun insert(event: SkillEventEntity): Long
+}
