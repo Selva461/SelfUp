@@ -93,6 +93,7 @@ import app.selfup.ui.records.RecordLogSheet
 import app.selfup.ui.records.RecordsEvent
 import app.selfup.ui.records.RecordsScreen
 import app.selfup.ui.records.RecordsViewModel
+import app.selfup.ui.theme.color
 import app.selfup.ui.stat.StatDetailScreen
 import app.selfup.ui.stat.StatDetailViewModel
 import dev.chrisbanes.haze.HazeState
