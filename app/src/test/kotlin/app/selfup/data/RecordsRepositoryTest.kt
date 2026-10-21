@@ -98,7 +98,7 @@ class MigrationTest {
     }
 
     @Test
-    fun v1ToV2AddsRecordTableAndKeepsData() = runTest {
+    fun upgradingFromV1AddsNewTablesAndKeepsData() = runTest {
         // Build the current schema, then turn it back into a v1 file: drop what v2 added.
         Room.databaseBuilder(context, SelfUpDatabase::class.java, name).allowMainThreadQueries().build().apply {
             openHelper.writableDatabase.run {
@@ -118,6 +118,10 @@ class MigrationTest {
                 RecordEntryEntity(kind = "run", atMillis = 0, weightKg = null, reps = null, seconds = 1800, distanceKm = 5.0, xpAwarded = 0),
             )
             assertEquals(1, migrated.recordDao().history("run").size)
+            migrated.skillDao().insert(
+                SkillEventEntity(conceptId = "java.strings", kind = SkillEventKind.READ, epochDay = 0, atMillis = 0, correct = null, total = null),
+            )
+            assertEquals(1, migrated.skillDao().forConcept("java.strings").size)
         } finally {
             migrated.close()
         }
@@ -125,6 +129,7 @@ class MigrationTest {
 
     private fun SupportSQLiteDatabase.downgradeToV1() {
         execSQL("DROP TABLE record_entry")
+        execSQL("DROP TABLE skill_event")
         version = 1
     }
 }
