@@ -111,6 +111,9 @@ interface MetaDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun put(meta: MetaEntity)
+
+    @Query("DELETE FROM app_meta WHERE `key` = :key")
+    suspend fun delete(key: String)
 }
 
 @Dao
@@ -149,4 +152,25 @@ interface HealthDao {
         """,
     )
     fun observeDailySpend(sinceEpochDay: Long): Flow<List<DailySpendRow>>
+}
+
+@Dao
+interface RecordDao {
+    @Query("SELECT * FROM record_entry ORDER BY atMillis, id")
+    fun observeAll(): Flow<List<RecordEntryEntity>>
+
+    @Query("SELECT * FROM record_entry WHERE kind = :kind ORDER BY atMillis, id")
+    suspend fun history(kind: String): List<RecordEntryEntity>
+
+    @Query("SELECT * FROM record_entry WHERE kind = :kind ORDER BY atMillis DESC, id DESC LIMIT 1")
+    suspend fun latest(kind: String): RecordEntryEntity?
+
+    @Query("SELECT * FROM record_entry WHERE id = :id")
+    suspend fun get(id: Long): RecordEntryEntity?
+
+    @Insert
+    suspend fun insert(entry: RecordEntryEntity): Long
+
+    @Query("DELETE FROM record_entry WHERE id = :id")
+    suspend fun delete(id: Long)
 }

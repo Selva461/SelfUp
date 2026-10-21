@@ -139,8 +139,25 @@ data class MetaEntity(
     val value: String,
 )
 
+/**
+ * One logged lift, run or benchmark. [xpAwarded] is the personal-best bonus it earned, kept
+ * so deleting the entry can take exactly that XP back.
+ */
+@Entity(tableName = "record_entry", indices = [Index("kind", "atMillis")])
+data class RecordEntryEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val kind: String,
+    val atMillis: Long,
+    val weightKg: Double?,
+    val reps: Int?,
+    val seconds: Int?,
+    val distanceKm: Double?,
+    val xpAwarded: Int,
+)
+
 object XpReason {
     const val COMPLETION = "completion"
     const val PENALTY = "penalty"
     const val UNDO = "undo"
+    const val RECORD = "record"
 }
