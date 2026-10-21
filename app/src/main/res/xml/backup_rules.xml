@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and below. The Groq key stays on the phone. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="ai.xml" />
+</full-backup-content>
