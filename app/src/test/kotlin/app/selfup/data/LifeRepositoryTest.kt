@@ -1,5 +1,6 @@
 package app.selfup.data
 
+import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -30,7 +31,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [35])
+@Config(sdk = [35], application = Application::class)
 class LifeRepositoryTest {
     private val zone = ZoneId.of("Asia/Kolkata")
     private val clock = MutableClock(
@@ -192,6 +193,102 @@ class LifeRepositoryTest {
         seeded.forEach { repo.deleteQuest(it.quest.id) }
         repo.seedDefaultsOnce()
         assertTrue(repo.observeDay(repo.today()).first().isEmpty())
+    }
+
+    // Day close: clock starts Monday 20:00; the first close only sets the marker.
+
+    private suspend fun earn(stat: Stat, xp: Int) {
+        // One-time HARD quests are 30 XP each; this keeps setup independent of daily quests.
+        repeat(xp / 30) {
+            repo.complete(repo.saveQuest(quest(stats = setOf(stat), difficulty = Difficulty.HARD, schedule = Schedule.OneTime())))
+        }
+    }
+
+    @Test
+    fun firstCloseOnlySetsTheStartingPoint() = runTest {
+        repo.saveQuest(quest())
+        assertTrue(repo.closeFinishedDays().isEmpty)
+        assertTrue(repo.closeFinishedDays().isEmpty)
+    }
+
+    @Test
+    fun missingADailyCostsXpAndAddsAMakeUpQuest() = runTest {
+        repo.closeFinishedDays()
+        earn(Stat.STRENGTH, 30)
+        val gym = repo.saveQuest(quest())
+
+        clock.advance(Duration.ofDays(1))
+        val report = repo.closeFinishedDays()
+
+        assertEquals(listOf(gym), report.missed.map { it.id })
+        assertEquals(5, report.xpLost)
+        assertEquals(25, totalXp(Stat.STRENGTH))
+        val makeUp = repo.observeDay(repo.today()).first().single { it.quest.penaltyFor == gym }.quest
+        assertEquals(Difficulty.MEDIUM, makeUp.difficulty)
+        assertEquals(setOf(Stat.STRENGTH), makeUp.stats)
+    }
+
+    @Test
+    fun closingIsIdempotent() = runTest {
+        repo.closeFinishedDays()
+        earn(Stat.STRENGTH, 30)
+        repo.saveQuest(quest())
+        clock.advance(Duration.ofDays(1))
+        repo.closeFinishedDays()
+        assertTrue(repo.closeFinishedDays().isEmpty)
+        assertEquals(25, totalXp(Stat.STRENGTH))
+        assertEquals(1, repo.observeAllQuests().first().count { it.penaltyFor != null })
+    }
+
+    @Test
+    fun completedAndNewQuestsAreNotPenalized() = runTest {
+        repo.closeFinishedDays()
+        earn(Stat.STRENGTH, 30)
+        repo.complete(repo.saveQuest(quest()))
+        clock.advance(Duration.ofDays(1))
+        // Created on Tuesday, so it can't have been missed on Monday.
+        repo.saveQuest(quest())
+
+        assertTrue(repo.closeFinishedDays().isEmpty)
+        assertEquals(50, totalXp(Stat.STRENGTH))
+    }
+
+    @Test
+    fun penaltiesNeverDropALevel() = runTest {
+        repo.closeFinishedDays()
+        earn(Stat.STRENGTH, 120) // Level 2, 20 XP above its floor.
+        repeat(6) { repo.saveQuest(quest()) }
+        clock.advance(Duration.ofDays(1))
+
+        assertEquals(20, repo.closeFinishedDays().xpLost)
+        assertEquals(100, totalXp(Stat.STRENGTH))
+        assertEquals(2, repo.observeStats().first().single { it.stat == Stat.STRENGTH }.level)
+    }
+
+    @Test
+    fun catchUpPenalizesEachDayButOnlyOffersYesterdaysMakeUp() = runTest {
+        repo.closeFinishedDays()
+        earn(Stat.STRENGTH, 60)
+        val gym = repo.saveQuest(quest())
+        clock.advance(Duration.ofDays(3)) // Monday, Tuesday and Wednesday all missed.
+
+        val report = repo.closeFinishedDays()
+        assertEquals(15, report.xpLost)
+        assertEquals(listOf(gym), report.missed.map { it.id })
+        assertEquals(1, repo.observeAllQuests().first().count { it.penaltyFor == gym })
+    }
+
+    @Test
+    fun unfinishedMakeUpQuestsExpire() = runTest {
+        repo.closeFinishedDays()
+        val gym = repo.saveQuest(quest(schedule = Schedule.Recurring(setOf(DayOfWeek.MONDAY))))
+        clock.advance(Duration.ofDays(1))
+        repo.closeFinishedDays()
+        assertEquals(1, repo.observeAllQuests().first().count { it.penaltyFor == gym })
+
+        clock.advance(Duration.ofDays(1))
+        repo.closeFinishedDays()
+        assertEquals(0, repo.observeAllQuests().first().count { it.penaltyFor == gym })
     }
 }
 

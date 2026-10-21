@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -24,14 +25,18 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.selfup.core.CompletionInput
@@ -41,6 +46,9 @@ import app.selfup.core.Schedule
 import app.selfup.core.Stat
 import app.selfup.ui.theme.color
 import java.time.DayOfWeek
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.time.format.TextStyle
 import java.util.Locale
 
@@ -77,6 +85,8 @@ fun QuestEditorSheet(
         mutableStateOf(if (initial?.input is CompletionInput.Number) InputKind.NUMBER else InputKind.TAP)
     }
     var unit by remember { mutableStateOf((initial?.input as? CompletionInput.Number)?.unit ?: "₹") }
+    var reminder by remember { mutableStateOf(initial?.reminder) }
+    var pickingTime by remember { mutableStateOf(false) }
 
     val canSave = title.isNotBlank() && stats.isNotEmpty() && (repeat != Repeat.DAYS || days.isNotEmpty())
 
@@ -92,7 +102,14 @@ fun QuestEditorSheet(
             InputKind.NUMBER -> CompletionInput.Number(unit.trim())
         }
         val base = initial ?: Quest(title = title, difficulty = difficulty, stats = stats, schedule = schedule)
-        return base.copy(title = title.trim(), difficulty = difficulty, stats = stats, schedule = schedule, input = input)
+        return base.copy(
+            title = title.trim(),
+            difficulty = difficulty,
+            stats = stats,
+            schedule = schedule,
+            input = input,
+            reminder = reminder,
+        )
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
@@ -186,6 +203,21 @@ fun QuestEditorSheet(
                 }
             }
 
+            Section("Reminder") {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = reminder != null,
+                        onCheckedChange = { on -> reminder = if (on) reminder ?: LocalTime.of(21, 0) else null },
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    reminder?.let { time ->
+                        TextButton(onClick = { pickingTime = true }) {
+                            Text(time.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)))
+                        }
+                    } ?: Text("Off", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
             Row(Modifier.fillMaxWidth()) {
                 if (initial != null) {
                     TextButton(onClick = { onDelete(initial.id) }) {
@@ -199,6 +231,28 @@ fun QuestEditorSheet(
             }
         }
     }
+
+    if (pickingTime) {
+        TimePickerDialog(
+            initial = reminder ?: LocalTime.of(21, 0),
+            onConfirm = {
+                reminder = it
+                pickingTime = false
+            },
+            onDismiss = { pickingTime = false },
+        )
+    }
+}
+
+@Composable
+private fun TimePickerDialog(initial: LocalTime, onConfirm: (LocalTime) -> Unit, onDismiss: () -> Unit) {
+    val state = rememberTimePickerState(initialHour = initial.hour, initialMinute = initial.minute)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = { onConfirm(LocalTime.of(state.hour, state.minute)) }) { Text("Set") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        text = { TimePicker(state) },
+    )
 }
 
 @Composable

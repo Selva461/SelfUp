@@ -2,6 +2,7 @@ package app.selfup.data
 
 import androidx.room.withTransaction
 import app.selfup.core.CompletionInput
+import app.selfup.core.DailyReset
 import app.selfup.core.DayBoundary
 import app.selfup.core.DefaultQuests
 import app.selfup.core.Quest
@@ -10,14 +11,17 @@ import app.selfup.core.Stat
 import app.selfup.core.StatChange
 import app.selfup.core.StatProgress
 import app.selfup.core.XpRules
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import java.time.Clock
 import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 
 /** A quest as it appears on a given quest day. */
@@ -27,6 +31,22 @@ data class DayQuest(
 ) {
     val isDone: Boolean get() = completion != null
 }
+
+/** What closing out finished quest days did, for telling the user. */
+data class DayCloseReport(
+    val missed: List<Quest> = emptyList(),
+    val xpLost: Int = 0,
+) {
+    val isEmpty: Boolean get() = missed.isEmpty()
+}
+
+/** What the reminder scheduler needs to know about one quest. */
+data class ReminderInput(
+    val quest: Quest,
+    val doneToday: Boolean,
+    /** A one-time quest that is complete for good. */
+    val finished: Boolean,
+)
 
 sealed interface CompletionResult {
     data class Completed(val changes: List<StatChange>) : CompletionResult
@@ -41,8 +61,8 @@ sealed interface CompletionResult {
  */
 class LifeRepository(
     private val db: SelfUpDatabase,
-    private val clock: Clock = Clock.systemDefaultZone(),
-    private val dayBoundary: DayBoundary = DayBoundary(zone = clock.zone),
+    val clock: Clock = Clock.systemDefaultZone(),
+    val dayBoundary: DayBoundary = DayBoundary(zone = clock.zone),
 ) {
     private val quests = db.questDao()
     private val completions = db.completionDao()
@@ -83,6 +103,26 @@ class LifeRepository(
                 }
             }
             .map { DayQuest(it, byQuest[it.id]) }
+    }
+
+    /** Every quest with a reminder, with today's state, re-emitted on any change. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun observeReminderInputs(): Flow<List<ReminderInput>> = combine(
+        observeAllQuests(),
+        observeToday().flatMapLatest { completions.observeOn(it.toEpochDay()) },
+        completions.observeFinishedOneTimeIds(),
+    ) { all, doneToday, finishedOneTime ->
+        val done = doneToday.map { it.questId }.toSet()
+        val finished = finishedOneTime.toSet()
+        all.filter { it.reminder != null }.map { ReminderInput(it, it.id in done, it.id in finished) }
+    }
+
+    suspend fun isDoneToday(questId: Long): Boolean {
+        val quest = getQuest(questId) ?: return false
+        return when (quest.schedule) {
+            is Schedule.OneTime -> completions.latest(questId) != null
+            is Schedule.Recurring -> completions.get(questId, today().toEpochDay()) != null
+        }
     }
 
     fun observeAllQuests(): Flow<List<Quest>> =
@@ -198,6 +238,62 @@ class LifeRepository(
         changes
     }
 
+    /**
+     * Closes every quest day that ended since the last call: missed daily quests cost XP
+     * (never a level), yesterday's misses get a make-up quest for today, and expired
+     * make-up quests are removed. Idempotent, so it is safe to call on every launch and
+     * at every rollover. The first call after install only sets the starting point.
+     */
+    suspend fun closeFinishedDays(): DayCloseReport = db.withTransaction {
+        val today = today()
+        val yesterday = today.minusDays(1)
+        val lastClosed = meta.get(LAST_CLOSED_DAY_KEY)?.toLong()?.let(LocalDate::ofEpochDay)
+        // Never move the marker backwards (e.g. after a clock change), or days would be penalized twice.
+        if (lastClosed == null || lastClosed.isBefore(yesterday)) {
+            meta.put(MetaEntity(LAST_CLOSED_DAY_KEY, yesterday.toEpochDay().toString()))
+        }
+        if (lastClosed == null || !lastClosed.isBefore(yesterday)) {
+            quests.deletePenaltyQuestsExpiredBefore(today.toEpochDay())
+            return@withTransaction DayCloseReport()
+        }
+
+        val rows = quests.all()
+        val all = rows.map(QuestMapper::toDomain)
+        val createdOn = rows.associate {
+            it.quest.id to dayBoundary.questDay(Instant.ofEpochMilli(it.quest.createdAtMillis))
+        }
+        val now = clock.millis()
+        val missedYesterday = mutableListOf<Quest>()
+        var xpLost = 0
+
+        var day = lastClosed.plusDays(1)
+        while (day.isBefore(today)) {
+            val done = completions.questIdsOn(day.toEpochDay()).toSet()
+            val missed = DailyReset.missed(all, day, done) { quest -> !createdOn.getValue(quest.id).isAfter(day) }
+            val penalties = DailyReset.penalties(xp.totals().toTotals(), missed)
+            xp.insertAll(
+                penalties.map {
+                    XpEventEntity(
+                        stat = it.stat.key,
+                        delta = it.delta,
+                        reason = XpReason.PENALTY,
+                        questId = it.questId,
+                        completionId = null,
+                        epochDay = day.toEpochDay(),
+                        createdAtMillis = now,
+                    )
+                },
+            )
+            xpLost -= penalties.sumOf { it.delta }
+            if (day == yesterday) missedYesterday += missed
+            day = day.plusDays(1)
+        }
+
+        missedYesterday.forEach { saveQuest(DailyReset.penaltyQuest(it, today)) }
+        quests.deletePenaltyQuestsExpiredBefore(today.toEpochDay())
+        DayCloseReport(missedYesterday, xpLost)
+    }
+
     /** Seeds the default quests once per install, so deleting them all doesn't bring them back. */
     suspend fun seedDefaultsOnce() = db.withTransaction {
         if (meta.get(SEEDED_KEY) != null) return@withTransaction
@@ -212,5 +308,6 @@ class LifeRepository(
 
     private companion object {
         const val SEEDED_KEY = "seeded_default_quests"
+        const val LAST_CLOSED_DAY_KEY = "last_closed_quest_day"
     }
 }

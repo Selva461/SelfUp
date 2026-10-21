@@ -27,8 +27,15 @@ interface QuestDao {
     )
     fun observeFeeding(stat: String): Flow<List<QuestWithStats>>
 
+    @Transaction
+    @Query("SELECT * FROM quest")
+    suspend fun all(): List<QuestWithStats>
+
     @Query("SELECT COUNT(*) FROM quest")
     suspend fun count(): Int
+
+    @Query("DELETE FROM quest WHERE penaltyForQuestId IS NOT NULL AND expiresOnEpochDay < :epochDay")
+    suspend fun deletePenaltyQuestsExpiredBefore(epochDay: Long)
 
     @Insert
     suspend fun insert(quest: QuestEntity): Long
@@ -59,6 +66,9 @@ interface CompletionDao {
         """,
     )
     fun observeFinishedOneTimeIds(): Flow<List<Long>>
+
+    @Query("SELECT questId FROM completion WHERE epochDay = :epochDay")
+    suspend fun questIdsOn(epochDay: Long): List<Long>
 
     @Query("SELECT * FROM completion WHERE questId = :questId AND epochDay = :epochDay")
     suspend fun get(questId: Long, epochDay: Long): CompletionEntity?

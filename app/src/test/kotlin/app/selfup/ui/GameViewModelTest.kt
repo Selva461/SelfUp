@@ -1,5 +1,6 @@
 package app.selfup.ui
 
+import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -30,7 +31,7 @@ import org.robolectric.annotation.Config
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [35])
+@Config(sdk = [35], application = Application::class)
 class GameViewModelTest {
     private lateinit var db: SelfUpDatabase
     private lateinit var repo: LifeRepository

@@ -1,6 +1,7 @@
 package app.selfup.core
 
 import java.time.DayOfWeek
+import java.time.LocalTime
 
 /** Quests seeded on first launch, taken from the real weekly routine. All are editable. */
 public object DefaultQuests {
@@ -26,6 +27,8 @@ public object DefaultQuests {
             stats = setOf(Stat.NUTRITION),
             schedule = Schedule.Recurring(),
             input = CompletionInput.YesNo,
+            // Dinner ends around 23:15.
+            reminder = LocalTime.of(23, 20),
         ),
         Quest(
             title = "Finish last meal 2+ hours before bed",
@@ -57,6 +60,8 @@ public object DefaultQuests {
             stats = setOf(Stat.MONEY),
             schedule = Schedule.Recurring(),
             input = CompletionInput.Number(unit = "₹"),
+            // After the gym and bath, before dinner.
+            reminder = LocalTime.of(22, 30),
         ),
     )
 }
