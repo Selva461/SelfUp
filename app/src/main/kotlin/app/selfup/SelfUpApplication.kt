@@ -1,6 +1,8 @@
 package app.selfup
 
 import android.app.Application
+import app.selfup.ai.AiSettings
+import app.selfup.ai.GroqPlanner
 import app.selfup.data.GoalsRepository
 import app.selfup.data.HealthRepository
 import app.selfup.data.LifeRepository
@@ -32,6 +34,10 @@ class SelfUpApplication : Application() {
     val mind: MindRepository by lazy { MindRepository(database, repository.clock, repository.dayBoundary) }
 
     val goals: GoalsRepository by lazy { GoalsRepository(database, repository.clock, repository.dayBoundary) }
+
+    val ai: AiSettings by lazy { AiSettings(this) }
+
+    val planner: GroqPlanner by lazy { GroqPlanner(ai) }
 
     private val reminders by lazy { ReminderScheduler(this) }
 

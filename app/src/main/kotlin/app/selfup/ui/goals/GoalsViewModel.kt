@@ -2,7 +2,12 @@ package app.selfup.ui.goals
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.selfup.ai.AiSettings
+import app.selfup.ai.GroqPlanner
+import app.selfup.ai.PlanReply
 import app.selfup.core.GoalMeasure
+import app.selfup.core.GoalPlanner
+import app.selfup.core.GoalRules
 import app.selfup.core.ImportedGoal
 import app.selfup.core.Metric
 import app.selfup.core.MindGame
@@ -13,6 +18,7 @@ import app.selfup.data.GoalsOverview
 import app.selfup.data.GoalsRepository
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -25,7 +31,28 @@ sealed interface GoalsEvent {
     data class Imported(val active: Int, val queued: Int) : GoalsEvent
 }
 
-class GoalsViewModel(private val goals: GoalsRepository) : ViewModel() {
+class GoalsViewModel(private val goals: GoalsRepository, private val planner: GroqPlanner, private val ai: AiSettings) : ViewModel() {
+    private val _hasKey = MutableStateFlow(ai.groqKey != null)
+    val hasKey: StateFlow<Boolean> = _hasKey
+
+    fun saveKey(key: String) {
+        ai.groqKey = key
+        _hasKey.value = ai.groqKey != null
+    }
+
+    fun forgetKey() {
+        ai.groqKey = null
+        _hasKey.value = false
+    }
+
+    /** Asks the model for a plan, sending your current bests so targets start from real numbers. */
+    suspend fun aiPlan(request: String): PlanReply {
+        val numbers = GoalTemplate.all.mapNotNull { template ->
+            goals.best(template.measure)?.let { "${template.name}: ${GoalPlanner.format(template.measure, GoalRules.round(template.measure, it))}" }
+        }
+        return planner.plan(request, numbers)
+    }
+
     val state: StateFlow<GoalsOverview> = goals.observe()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GoalsOverview(emptyList(), goals.today()))
 

@@ -48,6 +48,8 @@ import app.selfup.ui.theme.SectionLabel
 import app.selfup.ui.theme.Surfaces
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.format.TextStyle
+import java.util.Locale
 
 /**
  * Paste a plan Claude wrote in chat. It's checked as you paste, and nothing is saved until
@@ -130,32 +132,40 @@ fun ImportPlanSheet(activeCount: Int, today: LocalDate, onImport: (List<Imported
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color(0xFFFF8A7A),
                 )
-                is PlanCodeResult.Ok -> {
-                    val free = (GoalRules.MAX_ACTIVE - activeCount).coerceAtLeast(0)
-                    Text("${result.goals.size} goal${if (result.goals.size == 1) "" else "s"}".uppercase(), style = SectionLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    GlassGroup {
-                        result.goals.forEachIndexed { i, goal ->
-                            if (i > 0) GroupSeparator(start = 16.dp)
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                val preview = Goal(measure = goal.measure, target = goal.target, start = today, deadline = today.plusWeeks(goal.weeks.toLong()))
-                                Text(GoalPlanner.title(preview), style = MaterialTheme.typography.bodyLarge)
-                                val tasks = goal.plan.days.values.sumOf { it.size }
-                                Text(
-                                    buildString {
-                                        append("$tasks task${if (tasks == 1) "" else "s"} a week")
-                                        if (i >= free) append(" · queued")
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    }
-                    PrimaryButton("Add ${result.goals.size} goal${if (result.goals.size == 1) "" else "s"}", accent, {
-                        scope.launch { sheetState.hide() }.invokeOnCompletion { onImport(result.goals) }
-                    })
+                is PlanCodeResult.Ok -> PlanPreview(result.goals, activeCount, today) {
+                    scope.launch { sheetState.hide() }.invokeOnCompletion { onImport(result.goals) }
                 }
             }
         }
+    }
+}
+
+/** What a plan would add, with which goals would wait in the queue, and the Add button. */
+@Composable
+internal fun PlanPreview(goals: List<ImportedGoal>, activeCount: Int, today: LocalDate, onAdd: () -> Unit) {
+    val free = (GoalRules.MAX_ACTIVE - activeCount).coerceAtLeast(0)
+    val count = "${goals.size} goal${if (goals.size == 1) "" else "s"}"
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text(count.uppercase(), style = SectionLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        GlassGroup {
+            goals.forEachIndexed { i, goal ->
+                if (i > 0) GroupSeparator(start = 16.dp)
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val preview = Goal(measure = goal.measure, target = goal.target, start = today, deadline = today.plusWeeks(goal.weeks.toLong()))
+                    Text(GoalPlanner.title(preview), style = MaterialTheme.typography.bodyLarge)
+                    goal.plan.days.toSortedMap().forEach { (day, tasks) ->
+                        tasks.forEach { task ->
+                            Text(
+                                "${day.getDisplayName(TextStyle.SHORT, Locale.getDefault())}  ${task.title}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    if (i >= free) Text("Queued until a goal ends", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+        PrimaryButton("Add $count", MaterialTheme.colorScheme.primary, onAdd)
     }
 }

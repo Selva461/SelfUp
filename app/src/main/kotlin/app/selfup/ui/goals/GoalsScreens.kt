@@ -164,6 +164,7 @@ fun GoalsScreen(
     overview: GoalsOverview,
     onAdd: () -> Unit,
     onImport: () -> Unit,
+    onAiPlan: () -> Unit,
     onMoveDeadline: (GoalView, LocalDate) -> Unit,
     onChangeTarget: (GoalView, Double) -> Unit,
     onReached: (GoalView) -> Unit,
@@ -195,6 +196,7 @@ fun GoalsScreen(
                 val full = !GoalRules.canAdd(overview.active.size)
                 Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     PrimaryButton(if (full) "Add to the queue" else "Add a goal", MaterialTheme.colorScheme.primary, onAdd)
+                    PrimaryButton("Plan with AI", Color.White.copy(alpha = 0.85f), onAiPlan)
                     Text(
                         "Import a plan from Claude",
                         style = MaterialTheme.typography.labelLarge,

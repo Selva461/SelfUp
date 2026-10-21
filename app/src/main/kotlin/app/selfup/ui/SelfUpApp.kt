@@ -75,6 +75,8 @@ import app.selfup.core.RecordMath
 import app.selfup.core.Stat
 import app.selfup.core.StatChange
 import app.selfup.core.packs.Packs
+import app.selfup.ai.AiSettings
+import app.selfup.ai.GroqPlanner
 import app.selfup.data.GoalsRepository
 import app.selfup.data.HealthRepository
 import app.selfup.data.LifeRepository
@@ -94,6 +96,7 @@ import app.selfup.ui.glass.GlassTabBar
 import app.selfup.ui.glass.GlassTabBarHeight
 import app.selfup.ui.glass.LocalGlassLayers
 import app.selfup.ui.goals.AddGoalSheet
+import app.selfup.ui.goals.AiPlanSheet
 import app.selfup.ui.goals.GoalsEvent
 import app.selfup.ui.goals.GoalsScreen
 import app.selfup.ui.goals.GoalsViewModel
@@ -161,7 +164,7 @@ private sealed interface Editing {
 }
 
 @Composable
-fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository) {
+fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner) {
     val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository) } })
     val state by game.state.collectAsStateWithLifecycle()
     val allQuests by game.allQuests.collectAsStateWithLifecycle()
@@ -201,10 +204,12 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
     val mindVm: MindViewModel = viewModel(factory = viewModelFactory { initializer { MindViewModel(mind) } })
     val mindState by mindVm.state.collectAsStateWithLifecycle()
 
-    val goalsVm: GoalsViewModel = viewModel(factory = viewModelFactory { initializer { GoalsViewModel(goals) } })
+    val goalsVm: GoalsViewModel = viewModel(factory = viewModelFactory { initializer { GoalsViewModel(goals, planner, ai) } })
     val goalsState by goalsVm.state.collectAsStateWithLifecycle()
     var addingGoal by remember { mutableStateOf(false) }
     var importingPlan by remember { mutableStateOf(false) }
+    var aiPlanning by remember { mutableStateOf(false) }
+    val hasAiKey by goalsVm.hasKey.collectAsStateWithLifecycle()
 
     LaunchedEffect(goalsVm) {
         goalsVm.events.collect { event ->
@@ -413,6 +418,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                             overview = goalsState,
                             onAdd = { addingGoal = true },
                             onImport = { importingPlan = true },
+                            onAiPlan = { aiPlanning = true },
                             onMoveDeadline = { view, date -> goalsVm.moveDeadline(view.goal.id, date) },
                             onChangeTarget = { view, target -> goalsVm.changeTarget(view.goal.id, target) },
                             onReached = { goalsVm.markReached(it.goal.id) },
@@ -606,6 +612,22 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                 addingGoal = false
             },
             onDismiss = { addingGoal = false },
+        )
+    }
+
+    if (aiPlanning) {
+        AiPlanSheet(
+            hasKey = hasAiKey,
+            activeCount = goalsState.active.size,
+            today = goalsVm.today(),
+            onSaveKey = goalsVm::saveKey,
+            onForgetKey = goalsVm::forgetKey,
+            plan = goalsVm::aiPlan,
+            onImport = {
+                goalsVm.import(it)
+                aiPlanning = false
+            },
+            onDismiss = { aiPlanning = false },
         )
     }
 
