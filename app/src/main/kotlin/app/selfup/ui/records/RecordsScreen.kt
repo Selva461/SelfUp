@@ -29,7 +29,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.selfup.core.Metric
 import app.selfup.core.RecordKind
+import app.selfup.core.Stat
 import app.selfup.data.RecordSummary
+import app.selfup.gym.GymStatus
+import app.selfup.ui.components.GlassChip
 import app.selfup.ui.components.GlassGroup
 import app.selfup.ui.components.GroupHeader
 import app.selfup.ui.components.GroupSeparator
@@ -37,7 +40,10 @@ import app.selfup.ui.components.LargeTitle
 import app.selfup.ui.components.pressScale
 import app.selfup.ui.glass.frosted
 import app.selfup.ui.theme.color
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private val groups = listOf(
@@ -50,7 +56,13 @@ private val groups = listOf(
 private val testDayFormat = DateTimeFormatter.ofPattern("EEE d MMM")
 
 @Composable
-fun RecordsScreen(state: RecordsState, contentPadding: PaddingValues, onOpen: (RecordKind) -> Unit) {
+fun RecordsScreen(
+    state: RecordsState,
+    contentPadding: PaddingValues,
+    gym: GymStatus,
+    onConnectGym: () -> Unit,
+    onOpen: (RecordKind) -> Unit,
+) {
     val byKind = state.summaries.associateBy { it.kind }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -63,6 +75,11 @@ fun RecordsScreen(state: RecordsState, contentPadding: PaddingValues, onOpen: (R
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item(key = "title") { LargeTitle("Records") }
+        if (gym != GymStatus.NotInstalled) {
+            item(key = "gym") {
+                GymCard(gym, imported = state.summaries.sumOf { s -> s.entries.count { it.imported } }, onConnect = onConnectGym)
+            }
+        }
         item(key = "test-day") { TestDayCard(state.nextTestDay, tested = state.summaries.count { it.entries.isNotEmpty() }, total = RecordKind.entries.size) }
         groups.forEach { (name, kinds) ->
             item(key = "h-$name") { GroupHeader(name) }
@@ -109,6 +126,76 @@ private fun TestDayCard(next: LocalDate?, tested: Int, total: Int) {
             Text("$tested/$total", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
             Text("tested", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+}
+
+/**
+ * The link with the Gym app. There is nothing to press once connected: SelfUp pulls on its
+ * own, so the card only says when it last did.
+ */
+@Composable
+private fun GymCard(status: GymStatus, imported: Int, onConnect: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .frosted()
+            .padding(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (status is GymStatus.Connected) {
+                    val dot = if (status.failed) MaterialTheme.colorScheme.error else Stat.STRENGTH.color
+                    Canvas(Modifier.size(7.dp)) { drawCircle(dot) }
+                }
+                Text("GYM", style = app.selfup.ui.theme.SectionLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(
+                when (status) {
+                    is GymStatus.Connected -> "Connected"
+                    else -> "Connect Gym"
+                },
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Text(
+                when (status) {
+                    GymStatus.NeedsUpdate -> "Update Gym to its latest version, then come back here."
+                    is GymStatus.NeedsPermission -> "Lifts, runs and weigh-ins you log in Gym land here on their own and tick off goal tasks."
+                    is GymStatus.Connected -> when {
+                        status.failed -> "Couldn't read Gym just now. SelfUp will try again by itself."
+                        status.lastSync == null -> "Bringing in your training…"
+                        else -> buildString {
+                            append("Updated ").append(relative(status.lastSync))
+                            if (imported > 0) append(" · ").append(if (imported == 1) "1 entry" else "$imported entries").append(" from Gym")
+                        }
+                    }
+                    GymStatus.NotInstalled -> ""
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        when (status) {
+            GymStatus.NeedsUpdate -> GlassChip("Update", onClick = onConnect, accent = MaterialTheme.colorScheme.primary)
+            is GymStatus.NeedsPermission -> GlassChip("Connect", onClick = onConnect, accent = MaterialTheme.colorScheme.primary)
+            else -> Unit
+        }
+    }
+}
+
+private val syncTimeFormat = DateTimeFormatter.ofPattern("HH:mm")
+private val syncDateFormat = DateTimeFormatter.ofPattern("d MMM, HH:mm")
+
+private fun relative(at: Instant): String {
+    val now = Instant.now()
+    val minutes = Duration.between(at, now).toMinutes()
+    val zone = ZoneId.systemDefault()
+    return when {
+        minutes < 1 -> "just now"
+        minutes < 60 -> "$minutes min ago"
+        at.atZone(zone).toLocalDate() == now.atZone(zone).toLocalDate() -> "today at ${at.atZone(zone).format(syncTimeFormat)}"
+        else -> at.atZone(zone).format(syncDateFormat)
     }
 }
 

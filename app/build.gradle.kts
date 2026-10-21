@@ -94,6 +94,9 @@ dependencies {
     implementation(libs.haze.blur)
     implementation(libs.haze.glass)
 
+    // Pulls the Gym log in the background, so records and goals stay current without opening the app.
+    implementation(libs.androidx.work.runtime)
+
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)

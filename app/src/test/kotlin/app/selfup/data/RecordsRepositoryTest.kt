@@ -6,7 +6,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.selfup.core.DayBoundary
+import app.selfup.core.ImportedRecord
 import app.selfup.core.Metric
+import app.selfup.core.RecordEntry
 import app.selfup.core.RecordKind
 import app.selfup.core.RecordMath
 import app.selfup.core.Stat
@@ -20,6 +22,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import java.time.Clock
+import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
@@ -74,6 +77,48 @@ class RecordsRepositoryTest {
         records.delete(pr.entryId)
         assertEquals(0, strengthXp())
         assertEquals(1, records.observeSummaries().first().first { it.kind == RecordKind.PLANK }.entries.size)
+    }
+
+    private fun gymBench(session: Long, kg: Double, daysAgo: Long) = ImportedRecord(
+        "gym:session:$session:bench",
+        RecordEntry(RecordKind.BENCH, clock.instant().minus(Duration.ofDays(daysAgo)), weightKg = kg, reps = 5),
+    )
+
+    @Test
+    fun gymSyncIsIdempotentAndHistoryEarnsNoBonus() = runTest {
+        val connected = clock.instant().minus(Duration.ofDays(2))
+        val history = listOf(gymBench(1, 60.0, daysAgo = 10), gymBench(2, 65.0, daysAgo = 5))
+
+        val first = records.syncImported("gym:", history, earnsFrom = connected)
+        assertEquals(2, first.added)
+        assertTrue(first.personalBests.isEmpty())
+        assertEquals(0, strengthXp())
+
+        val again = records.syncImported("gym:", history, earnsFrom = connected)
+        assertEquals(0, again.added + again.updated + again.removed)
+        val entries = records.observeSummaries().first().first { it.kind == RecordKind.BENCH }.entries
+        assertEquals(2, entries.size)
+        assertTrue(entries.all { it.imported })
+    }
+
+    @Test
+    fun gymWorkoutAfterConnectingEarnsBonusAndDeletingItInGymTakesItBack() = runTest {
+        val connected = clock.instant().minus(Duration.ofDays(2))
+        records.log(RecordKind.BENCH, weightKg = 60.0, reps = 5)
+        val withPr = listOf(gymBench(1, 60.0, daysAgo = 10), gymBench(3, 70.0, daysAgo = 0))
+        val result = records.syncImported("gym:", withPr, earnsFrom = connected)
+        assertEquals(listOf(RecordKind.BENCH), result.personalBests.map { it.first })
+        assertEquals(RecordMath.PR_XP.toLong(), strengthXp())
+
+        val edited = records.syncImported("gym:", listOf(withPr[0], gymBench(3, 72.5, daysAgo = 0)), earnsFrom = connected)
+        assertEquals(1, edited.updated)
+        assertEquals(RecordMath.PR_XP.toLong(), strengthXp())
+
+        val deleted = records.syncImported("gym:", listOf(withPr[0]), earnsFrom = connected)
+        assertEquals(1, deleted.removed)
+        assertEquals(0, strengthXp())
+        // The entry logged in SelfUp is never touched by a sync.
+        assertEquals(2, records.observeSummaries().first().first { it.kind == RecordKind.BENCH }.entries.size)
     }
 
     @Test

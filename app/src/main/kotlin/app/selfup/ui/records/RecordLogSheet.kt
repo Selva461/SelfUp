@@ -174,8 +174,18 @@ fun RecordLogSheet(
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                IconButton(onClick = { onDelete(logged.id) }) {
-                                    Icon(Icons.Filled.Close, contentDescription = "Delete entry", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (logged.imported) {
+                                    // Owned by Gym: deleting it here would only bring it back on the next sync.
+                                    Text(
+                                        "Gym",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(start = 10.dp, end = 14.dp).semantics { contentDescription = "From Gym" },
+                                    )
+                                } else {
+                                    IconButton(onClick = { onDelete(logged.id) }) {
+                                        Icon(Icons.Filled.Close, contentDescription = "Delete entry", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                 }
                             }
                         }

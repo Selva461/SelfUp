@@ -7,6 +7,16 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Re-arm reminders after a reboot. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Read the Gym app's training log. Gym defines these as dangerous, so Android asks the
+         user once; one per Gym build, since its debug and release builds each define their own. -->
+    <uses-permission android:name="dev.avles.gym.permission.READ_TRAINING" />
+    <uses-permission android:name="dev.avles.gym.debug.permission.READ_TRAINING" />
+
+    <!-- Android 11+ hides other apps unless we say which ones we look for. -->
+    <queries>
+        <package android:name="dev.avles.gym" />
+        <package android:name="dev.avles.gym.debug" />
+    </queries>
 
     <application
         android:name=".SelfUpApplication"

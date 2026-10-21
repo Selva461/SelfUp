@@ -18,8 +18,14 @@ class MainActivity : ComponentActivity() {
         val app = application as SelfUpApplication
         setContent {
             SelfUpTheme {
-                SelfUpApp(app.repository, app.health, app.records, app.skills, app.mind, app.goals, app.ai, app.planner)
+                SelfUpApp(app.repository, app.health, app.records, app.skills, app.mind, app.goals, app.ai, app.planner, app.gym)
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Coming back from Gym (or from the permission prompt) shows what was just logged there.
+        (application as SelfUpApplication).syncGym()
     }
 }

@@ -173,6 +173,9 @@ interface RecordDao {
 
     @Query("DELETE FROM record_entry WHERE id = :id")
     suspend fun delete(id: Long)
+
+    @Query("SELECT * FROM record_entry WHERE source LIKE :prefix || '%'")
+    suspend fun importedFrom(prefix: String): List<RecordEntryEntity>
 }
 
 @Dao
