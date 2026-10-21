@@ -10,10 +10,14 @@ import app.selfup.core.Stat
 import app.selfup.core.StatChange
 import app.selfup.core.StatProgress
 import app.selfup.core.XpRules
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import java.time.Clock
+import java.time.Duration
 import java.time.LocalDate
 
 /** A quest as it appears on a given quest day. */
@@ -47,6 +51,15 @@ class LifeRepository(
 
     fun today(): LocalDate = dayBoundary.questDay(clock.instant())
 
+    /** The current quest day, re-emitted when the day rolls over while the app is open. */
+    fun observeToday(): Flow<LocalDate> = flow {
+        while (true) {
+            val now = clock.instant()
+            emit(dayBoundary.questDay(now))
+            delay(Duration.between(now, dayBoundary.nextReset(now)).toMillis() + 1)
+        }
+    }.distinctUntilChanged()
+
     fun observeStats(stats: List<Stat> = Stat.launchSet): Flow<List<StatProgress>> =
         xp.observeTotals().map { rows -> StatProgress.of(rows.toTotals(), stats) }
 
@@ -71,6 +84,9 @@ class LifeRepository(
             }
             .map { DayQuest(it, byQuest[it.id]) }
     }
+
+    fun observeAllQuests(): Flow<List<Quest>> =
+        quests.observeAll().map { rows -> rows.map(QuestMapper::toDomain) }
 
     fun observeQuestsFeeding(stat: Stat): Flow<List<Quest>> =
         quests.observeFeeding(stat.key).map { rows -> rows.map(QuestMapper::toDomain) }
