@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # An explicit bash shell runs with pipefail, so `| tee` keeps Gradle's exit code.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Game rules tests
+        run: ./gradlew :core:test 2>&1 | tee -a build.log
+
+      - name: App unit tests
+        run: ./gradlew :app:testDebugUnitTest 2>&1 | tee -a build.log
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug 2>&1 | tee -a build.log
+
+      # Surfaces compiler errors and test failures as check annotations, which are
+      # readable through the API without downloading logs.
+      - name: Report failures
+        if: failure()
+        run: |
+          {
+            grep -E '^e: |^w: .*error' build.log || true
+            grep -A30 'What went wrong' build.log || true
+            grep -B1 -A6 ' FAILED$' build.log || true
+          } | head -150 > failures.txt
+          split -l 25 failures.txt chunk_
+          for f in chunk_*; do
+            msg=$(sed -e 's/%/%25/g' "$f" | sed -e ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=Build failure::${msg}"
+          done
+
+      # A one-line summary of what was built and tested, readable through the API.
+      - name: Summarize
+        if: always()
+        run: |
+          apks=$(find . -name '*.apk' -not -path './.gradle/*' | tr '\n' ' ')
+          tests=$(find . -path '*/test-results/*' -name '*.xml' -exec grep -ho 'tests="[0-9]*" skipped="[0-9]*" failures="[0-9]*" errors="[0-9]*"' {} + | awk -F'"' '{t+=$2; s+=$4; f+=$6; e+=$8} END {print t" tests, "f" failures, "e" errors, "s" skipped"}')
+          echo "::notice title=Summary::APKs: ${apks:-none} | ${tests}"
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            core/build/reports/tests/
+            app/build/reports/tests/
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: selfup-debug-apk
+          path: '**/build/outputs/apk/**/*.apk'
+          if-no-files-found: error
