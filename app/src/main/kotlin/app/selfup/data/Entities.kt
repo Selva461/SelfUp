@@ -143,7 +143,10 @@ data class MetaEntity(
  * One logged lift, run or benchmark. [xpAwarded] is the personal-best bonus it earned, kept
  * so deleting the entry can take exactly that XP back.
  */
-@Entity(tableName = "record_entry", indices = [Index("kind", "atMillis")])
+@Entity(
+    tableName = "record_entry",
+    indices = [Index("kind", "atMillis"), Index(value = ["source"], unique = true)],
+)
 data class RecordEntryEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val kind: String,
@@ -153,6 +156,8 @@ data class RecordEntryEntity(
     val seconds: Int?,
     val distanceKm: Double?,
     val xpAwarded: Int,
+    /** Where an imported entry came from, such as "gym:session:12:bench"; null when logged here. */
+    val source: String? = null,
 )
 
 /**

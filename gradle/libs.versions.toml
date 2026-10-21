@@ -21,6 +21,7 @@ coroutines = "1.11.0"
 junit4 = "4.13.2"
 robolectric = "4.17"
 haze = "2.0.1"
+androidx-work = "2.10.1"
 
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity-compose" }
@@ -46,6 +47,7 @@ robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectr
 haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
 haze-blur = { module = "dev.chrisbanes.haze:haze-blur", version.ref = "haze" }
 haze-glass = { module = "dev.chrisbanes.haze:haze-glass", version.ref = "haze" }
+androidx-work-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "androidx-work" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

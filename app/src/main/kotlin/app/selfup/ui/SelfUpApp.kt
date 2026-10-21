@@ -1,9 +1,12 @@
 package app.selfup.ui
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -84,6 +87,9 @@ import app.selfup.data.MindRepository
 import app.selfup.data.RecordsRepository
 import app.selfup.data.SkillResult
 import app.selfup.data.SkillsRepository
+import app.selfup.gym.GymBridge
+import app.selfup.gym.GymStatus
+import app.selfup.gym.GymSync
 import app.selfup.ui.components.CelebrationOverlay
 import app.selfup.ui.components.LevelUpOverlay
 import app.selfup.ui.components.NumberEntryDialog
@@ -128,6 +134,7 @@ import app.selfup.ui.stat.StatDetailViewModel
 import app.selfup.ui.theme.color
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 private val Tabs = listOf(
@@ -164,7 +171,7 @@ private sealed interface Editing {
 }
 
 @Composable
-fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner) {
+fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner, gym: GymSync) {
     val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository) } })
     val state by game.state.collectAsStateWithLifecycle()
     val allQuests by game.allQuests.collectAsStateWithLifecycle()
@@ -255,6 +262,50 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                         launch { snackbar.showSnackbar("+${result.xp} ${stat?.displayName.orEmpty()}", duration = SnackbarDuration.Short) }
                     }
                 }
+            }
+        }
+    }
+
+    val gymStatus by gym.status.collectAsStateWithLifecycle()
+    val askGym = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val permission = (gym.status.value as? GymStatus.NeedsPermission)?.permission
+        when {
+            granted -> scope.launch(Dispatchers.IO) { gym.sync() }
+            // Denied with "don't ask again": Android won't show the prompt, so only Settings can grant it.
+            permission != null && (context as? Activity)?.shouldShowRequestPermissionRationale(permission) == false -> scope.launch {
+                val result = snackbar.showSnackbar("Allow Gym access in Settings to connect", actionLabel = "Settings", duration = SnackbarDuration.Long)
+                if (result == SnackbarResult.ActionPerformed) {
+                    context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)))
+                }
+            }
+        }
+    }
+    val onConnectGym: () -> Unit = {
+        when (val status = gymStatus) {
+            is GymStatus.NeedsPermission -> askGym.launch(status.permission)
+            GymStatus.NeedsUpdate -> context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(GymBridge.DOWNLOAD_URL)))
+            else -> Unit
+        }
+    }
+
+    LaunchedEffect(gym) {
+        gym.results.collect { result ->
+            val leveled = result.changes.filter { it.leveledUp }
+            if (leveled.isNotEmpty()) levelUp = leveled
+            val best = result.personalBests.lastOrNull()
+            if (best != null) {
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                newBest = best
+            }
+            launch {
+                val count = result.added + result.updated
+                val text = when {
+                    best != null -> "New ${best.first.displayName} best from Gym  +${RecordMath.PR_XP} ${best.first.stat.displayName}"
+                    count == 1 -> "1 entry in from Gym"
+                    count > 1 -> "$count entries in from Gym"
+                    else -> null
+                }
+                if (text != null) snackbar.showSnackbar(text, duration = SnackbarDuration.Short)
             }
         }
     }
@@ -392,7 +443,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                         QuestsScreen(state, allQuests, padding, onComplete = complete, onEdit = edit)
                     }
                     composable(Routes.RECORDS) {
-                        RecordsScreen(recordsState, padding, onOpen = { recordSheet = it })
+                        RecordsScreen(recordsState, padding, gymStatus, onConnectGym = onConnectGym, onOpen = { recordSheet = it })
                     }
                     composable(Routes.SKILLS) {
                         SkillsScreen(

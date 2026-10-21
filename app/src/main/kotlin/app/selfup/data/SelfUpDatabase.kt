@@ -21,7 +21,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MindScoreEntity::class,
         GoalEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class SelfUpDatabase : RoomDatabase() {
@@ -87,6 +87,12 @@ abstract class SelfUpDatabase : RoomDatabase() {
             object : Migration(5, 6) {
                 override fun migrate(db: SupportSQLiteDatabase) {
                     db.execSQL("ALTER TABLE `goal` ADD COLUMN `plan` TEXT")
+                }
+            },
+            object : Migration(6, 7) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("ALTER TABLE `record_entry` ADD COLUMN `source` TEXT")
+                    db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_record_entry_source` ON `record_entry` (`source`)")
                 }
             },
         )

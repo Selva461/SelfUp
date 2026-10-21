@@ -11,8 +11,12 @@ import app.selfup.data.RecordsRepository
 import app.selfup.data.SkillsRepository
 import app.selfup.data.ReminderInput
 import app.selfup.data.SelfUpDatabase
+import app.selfup.gym.GymBridge
+import app.selfup.gym.GymSync
+import app.selfup.gym.GymSyncWorker
 import app.selfup.reminders.ReminderScheduler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -39,7 +43,16 @@ class SelfUpApplication : Application() {
 
     val planner: GroqPlanner by lazy { GroqPlanner(ai) }
 
+    val gym: GymSync by lazy {
+        GymSync(GymBridge(this), records, database.metaDao(), repository.clock, zone = { repository.dayBoundary.zone })
+    }
+
     private val reminders by lazy { ReminderScheduler(this) }
+
+    /** Pulls from Gym now, off the main thread. Called whenever SelfUp comes to the foreground. */
+    fun syncGym() {
+        appScope.launch(Dispatchers.IO) { gym.sync() }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -47,6 +60,7 @@ class SelfUpApplication : Application() {
         // Any change to quests or today's completions re-arms reminders, so no call site
         // (editor, completion, undo, notification action) has to remember to.
         appScope.launch { repository.observeReminderInputs().collect(::syncReminders) }
+        GymSyncWorker.schedule(this)
     }
 
     /** One-off re-arm for receivers, which may run before the collector above emits. */
