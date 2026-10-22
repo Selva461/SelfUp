@@ -135,6 +135,22 @@ class FocusRepository(
         return block
     }
 
+    /**
+     * Minutes left when [pkg] is open with the budget nearly spent and today's warning
+     * hasn't been shown yet, else null. Showing it is logged.
+     */
+    suspend fun budgetWarning(pkg: String): Int? {
+        if (pkg !in apps() || !source.hasAccess()) return null
+        val day = today().toEpochDay()
+        if (meta.get(WARNED_KEY)?.toLongOrNull() == day) return null
+        val used = withContext(Dispatchers.IO) { ScreenTime.minutes(usedToday()) }
+        val left = ScreenTime.DAILY_BUDGET_MINUTES - used
+        if (left !in 1..ScreenTime.WARN_AT_MINUTES_LEFT) return null
+        meta.put(MetaEntity(WARNED_KEY, day.toString()))
+        log(FocusEventKind.WARNED, day, pkg = pkg, minutesUsed = used)
+        return left
+    }
+
     /** True when today's one grace unlock is still available. */
     suspend fun graceAvailable(): Boolean = graceDay() != today().toEpochDay()
 
@@ -186,6 +202,7 @@ class FocusRepository(
     private companion object {
         const val SETTLED_KEY = "focus_settled_day"
         const val GRACE_KEY = "focus_grace"
+        const val WARNED_KEY = "focus_warned_day"
         const val REFRESH = 60_000L
     }
 }

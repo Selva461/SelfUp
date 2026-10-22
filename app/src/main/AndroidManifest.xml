@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Only for planning with your own Groq key; nothing else goes online. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Reminder popups over other apps, styled as System windows. Granted in system settings. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- Lets a reminder light the screen and show its popup over the lock screen. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- Re-arm reminders after a reboot. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Read the Gym app's training log. Gym defines these as dangerous, so Android asks the
@@ -47,6 +51,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Reminder and budget popups, in their own translucent task over whatever is open. -->
+        <activity
+            android:name=".reminders.PopupActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:taskAffinity="app.selfup.popup"
+            android:theme="@style/Theme.SelfUp.Popup"
+            tools:targetApi="27" />
 
         <!-- Shown over a locked app; its own task so leaving it never lands back in that app. -->
         <activity

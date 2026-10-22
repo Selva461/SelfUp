@@ -1,5 +1,6 @@
 package app.selfup.ui
 
+import app.selfup.reminders.PopupActivity
 import app.selfup.data.Backup
 import app.selfup.focus.BlockerService
 import app.selfup.focus.FocusRepository
@@ -7,6 +8,7 @@ import app.selfup.focus.UsageReader
 import app.selfup.ui.home.screenTimeSection
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -39,11 +41,13 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -98,6 +102,7 @@ import app.selfup.gym.GymSync
 import app.selfup.ui.components.CelebrationOverlay
 import app.selfup.ui.components.LevelUpOverlay
 import app.selfup.ui.components.NumberEntryDialog
+import app.selfup.ui.components.SystemDialog
 import app.selfup.ui.system.SystemBackground
 import app.selfup.ui.system.SystemIconButton
 import app.selfup.ui.system.BlurLayers
@@ -193,6 +198,36 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    // Reminders pop up as System windows over other apps, which needs "Display over other apps".
+    // Ask once, the first time a quest has a reminder.
+    val prefs = remember { context.getSharedPreferences("ui", Context.MODE_PRIVATE) }
+    var askPopups by remember { mutableStateOf(false) }
+    LaunchedEffect(hasReminders) {
+        if (hasReminders && !PopupActivity.canPopUp(context) && !prefs.getBoolean(ASKED_POPUPS, false)) askPopups = true
+    }
+    if (askPopups) {
+        SystemDialog(
+            title = "Reminder popups",
+            onDismiss = {
+                askPopups = false
+                prefs.edit().putBoolean(ASKED_POPUPS, true).apply()
+            },
+            confirmText = "Allow",
+            onConfirm = {
+                askPopups = false
+                prefs.edit().putBoolean(ASKED_POPUPS, true).apply()
+                context.startActivity(PopupActivity.overlaySettings(context))
+            },
+            dismissText = "Not now",
+        ) {
+            Text(
+                "Let quest reminders appear as a System window over any app, not only as a notification. " +
+                    "Turn on \"Display over other apps\" for SelfUp.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 
@@ -780,3 +815,5 @@ private fun androidx.navigation.NavController.switchTab(route: String) {
         restoreState = true
     }
 }
+
+private const val ASKED_POPUPS = "asked_popups"

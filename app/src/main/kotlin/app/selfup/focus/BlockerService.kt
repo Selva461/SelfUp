@@ -7,6 +7,7 @@ import android.content.Intent
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import app.selfup.SelfUpApplication
+import app.selfup.reminders.PopupActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -39,6 +40,9 @@ class BlockerService : AccessibilityService() {
         if (pkg == packageName) return
         watch = scope.launch {
             while (isActive && foreground == pkg) {
+                focus.budgetWarning(pkg)?.let { left ->
+                    startActivity(PopupActivity.budgetWarning(this@BlockerService, left))
+                }
                 if (focus.shouldBlock(pkg)) {
                     startActivity(BlockActivity.intent(this@BlockerService, pkg))
                     foreground = null

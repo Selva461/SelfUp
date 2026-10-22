@@ -278,4 +278,5 @@ object FocusEventKind {
     const val GRACE = "grace"
     const val VERIFIED = "verified"
     const val BONUS = "bonus"
+    const val WARNED = "warned"
 }

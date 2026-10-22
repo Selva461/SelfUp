@@ -1,8 +1,10 @@
 package app.selfup.reminders
 
+import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.PowerManager
 import android.util.Log
 import app.selfup.SelfUpApplication
 import kotlinx.coroutines.CoroutineScope
@@ -44,6 +46,18 @@ class ReminderReceiver : BroadcastReceiver() {
         // The quest may have been done, rescheduled or expired since the alarm was armed.
         if (repository.isDoneToday(questId) || !quest.schedule.isDueOn(repository.today())) return
         if (!QuestNotifications.show(app, quest)) Log.w(TAG, "Notifications are blocked")
+        // With the screen on and unlocked, pop the System window over whatever is open. When
+        // it's off or locked, the notification's full-screen intent shows the same popup.
+        if (PopupActivity.canPopUp(app) && isInUse(app)) {
+            runCatching { app.startActivity(PopupActivity.quest(app, questId)) }
+                .onFailure { Log.w(TAG, "Popup blocked", it) }
+        }
+    }
+
+    private fun isInUse(context: Context): Boolean {
+        val power = context.getSystemService(PowerManager::class.java)
+        val keyguard = context.getSystemService(KeyguardManager::class.java)
+        return power?.isInteractive == true && keyguard?.isKeyguardLocked != true
     }
 
     companion object {

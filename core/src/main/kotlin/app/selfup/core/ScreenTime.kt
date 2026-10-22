@@ -109,6 +109,9 @@ public object ScreenTime {
 
     public fun minutes(millis: Map<String, Long>): Int = (millis.values.sum() / 60_000).toInt()
 
+    /** The popup warns once a day when this many minutes or fewer are left. */
+    public const val WARN_AT_MINUTES_LEFT: Int = 5
+
     /** How long a one-off grace unlock lasts once the budget is spent. One per day. */
     public const val GRACE_MINUTES: Int = 5
 
