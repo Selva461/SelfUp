@@ -120,13 +120,6 @@ data class MealLogEntity(
     val food: String,
 )
 
-@Entity(tableName = "gas_log", indices = [Index("atMillis")])
-data class GasLogEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val atMillis: Long,
-    val level: Int,
-)
-
 data class DailySpendRow(
     val epochDay: Long,
     val total: Double,

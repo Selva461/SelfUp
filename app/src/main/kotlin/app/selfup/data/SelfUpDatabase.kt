@@ -15,13 +15,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         XpEventEntity::class,
         MetaEntity::class,
         MealLogEntity::class,
-        GasLogEntity::class,
         RecordEntryEntity::class,
         SkillEventEntity::class,
         MindScoreEntity::class,
         GoalEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class SelfUpDatabase : RoomDatabase() {
@@ -93,6 +92,11 @@ abstract class SelfUpDatabase : RoomDatabase() {
                 override fun migrate(db: SupportSQLiteDatabase) {
                     db.execSQL("ALTER TABLE `record_entry` ADD COLUMN `source` TEXT")
                     db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_record_entry_source` ON `record_entry` (`source`)")
+                }
+            },
+            object : Migration(7, 8) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("DROP TABLE IF EXISTS `gas_log`")
                 }
             },
         )

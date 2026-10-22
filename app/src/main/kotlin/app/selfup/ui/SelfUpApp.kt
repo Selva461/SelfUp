@@ -543,7 +543,6 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                                 launch {
                                     val text = when (event) {
                                         is LogEvent.MealLogged -> "Logged ${event.food}"
-                                        is LogEvent.GasLogged -> "Logged gas ${event.level}"
                                     }
                                     val result = snackbar.showSnackbar(text, actionLabel = "Undo", duration = SnackbarDuration.Short)
                                     if (result == SnackbarResult.ActionPerformed) log.undo(event)
@@ -555,12 +554,11 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                             boundary = health.dayBoundary,
                             contentPadding = padding,
                             onMeal = log::logMeal,
-                            onGas = log::logGas,
                             onShare = {
                                 scope.launch {
                                     val send = Intent(Intent.ACTION_SEND).apply {
                                         type = "text/plain"
-                                        putExtra(Intent.EXTRA_SUBJECT, "Food and gas log")
+                                        putExtra(Intent.EXTRA_SUBJECT, "Food log")
                                         putExtra(Intent.EXTRA_TEXT, log.exportCsv())
                                     }
                                     context.startActivity(Intent.createChooser(send, "Share log"))

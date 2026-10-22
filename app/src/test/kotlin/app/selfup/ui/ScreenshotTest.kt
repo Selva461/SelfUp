@@ -27,7 +27,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.selfup.core.CompletionInput
 import app.selfup.core.DayBoundary
 import app.selfup.core.Difficulty
-import app.selfup.core.GasEntry
 import app.selfup.core.HealthDay
 import app.selfup.core.MealEntry
 import app.selfup.core.Quest
@@ -159,11 +158,10 @@ class ScreenshotTest {
             HealthDay(
                 today.minusDays(d),
                 if (d % 3 == 2L) emptyList() else listOf(MealEntry(1, at.minusSeconds(d * 86_400), "Rice and dal"), MealEntry(2, at.minusSeconds(d * 86_400 - 25_000), "Eggs")),
-                if (d % 2 == 0L) listOf(GasEntry(1, at, 2)) else emptyList(),
             )
         }
         val spend = (13 downTo 0).map { today.minusDays(it.toLong()) to listOf(0.0, 240.0, 120.0, 560.0, 90.0)[it % 5] }
-        LogScreen(LogState(days = days, spend = spend), DayBoundary(LocalTime.of(4, 0), zone), padding, onMeal = {}, onGas = {}, onShare = {})
+        LogScreen(LogState(days = days, spend = spend), DayBoundary(LocalTime.of(4, 0), zone), padding, onMeal = {}, onShare = {})
     }
 
     @Test

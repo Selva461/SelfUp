@@ -3,8 +3,6 @@
 package app.selfup.ui.log
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -24,20 +22,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.selfup.core.DayBoundary
-import app.selfup.core.GasLevels
 import app.selfup.core.HealthDay
 import app.selfup.core.HealthLog
 import app.selfup.core.Stat
@@ -49,9 +41,6 @@ import app.selfup.ui.components.SystemChip
 import app.selfup.ui.components.SystemDialog
 import app.selfup.ui.components.SystemGroup
 import app.selfup.ui.components.SystemTextButton
-import app.selfup.ui.components.pressScale
-import app.selfup.ui.system.Glow
-import app.selfup.ui.system.PanelShape
 import app.selfup.ui.system.systemPanel
 import app.selfup.ui.theme.color
 import app.selfup.ui.theme.colorLight
@@ -63,15 +52,12 @@ import kotlin.math.roundToInt
 /** Bedtime used to flag late meals (the spec's "last meal 2+ hours before bed"). */
 private val Bedtime: LocalTime = LocalTime.MIDNIGHT
 
-private val gasLabels = mapOf(1 to "None", 2 to "Mild", 3 to "Some", 4 to "Bad", 5 to "Severe")
-
 @Composable
 fun LogScreen(
     state: LogState,
     boundary: DayBoundary,
     contentPadding: PaddingValues,
     onMeal: (String) -> Unit,
-    onGas: (Int) -> Unit,
     onShare: () -> Unit,
 ) {
     var typingFood by remember { mutableStateOf(false) }
@@ -91,7 +77,7 @@ fun LogScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item(key = "title") { LargeTitle("Log", eyebrow = "Food, gas and spending") }
+        item(key = "title") { LargeTitle("Log", eyebrow = "Food and spending") }
 
         item(key = "meal-header") { GroupHeader("Ate just now") }
         item(key = "meals") {
@@ -100,9 +86,6 @@ fun LogScreen(
                 SystemChip("Other…", onClick = { typingFood = true }, accent = MaterialTheme.colorScheme.primary)
             }
         }
-
-        item(key = "gas-header") { GroupHeader("Gas right now") }
-        item(key = "gas") { GasPicker(onGas) }
 
         item(key = "spend-header") { GroupHeader("Spending · last 14 days") }
         item(key = "spend") { SpendChart(state.spend) }
@@ -119,9 +102,6 @@ fun LogScreen(
                     DayRow(day, boundary)
                 }
             }
-        }
-        item(key = "note") {
-            Muted("This is a record to discuss with a doctor, not a diagnosis.", Modifier.padding(start = 6.dp, top = 6.dp))
         }
     }
 
@@ -152,8 +132,7 @@ private fun DayRow(day: HealthDay, boundary: DayBoundary) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(Modifier.fillMaxWidth()) {
             Text(day.day.format(dayFormat), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-            val gas = day.averageGas?.let { "Gas avg ${"%.1f".format(it)} · max ${day.maxGas}" } ?: "No gas logged"
-            Muted(gas)
+            day.lastMealAt?.let { Muted("Last meal ${it.atZone(boundary.zone).toLocalTime().format(timeFormat)}") }
         }
         if (day.meals.isEmpty()) {
             Muted("No meals logged")
@@ -224,42 +203,3 @@ private fun SpendChart(spend: List<Pair<LocalDate, Double>>) {
 
 @Composable
 private fun Muted(text: String, modifier: Modifier = Modifier) = MutedText(text, modifier)
-
-/** Green to red, so the scale reads at a glance without the labels. */
-private val gasColors = mapOf(
-    1 to Color(0xFF5EE29A),
-    2 to Color(0xFFB5E36A),
-    3 to Color(0xFFF5DA5B),
-    4 to Color(0xFFFFA14D),
-    5 to Color(0xFFFF6A5E),
-)
-
-/** Five systemPanel tiles in one row; one tap logs that level. */
-@Composable
-private fun GasPicker(onGas: (Int) -> Unit) {
-    val haptics = LocalHapticFeedback.current
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        GasLevels.forEach { level ->
-            val color = gasColors.getValue(level)
-            val interaction = remember { MutableInteractionSource() }
-            val shape = PanelShape
-            Column(
-                Modifier
-                    .weight(1f)
-                    .pressScale(interaction, 0.92f)
-                    .systemPanel(shape, accent = color, glow = Glow.None)
-                    .clickable(interactionSource = interaction, indication = null, role = Role.Button) {
-                        haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                        onGas(level)
-                    }
-                    .padding(vertical = 12.dp)
-                    .semantics { contentDescription = "Gas $level, ${gasLabels.getValue(level)}" },
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text("$level", style = MaterialTheme.typography.titleLarge, color = color)
-                Text(gasLabels.getValue(level), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
