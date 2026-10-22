@@ -93,10 +93,9 @@ class PopupActivity : ComponentActivity() {
 
         /**
          * Whether a popup can open over other apps. Android only lets an app start a screen from
-         * the background with "Display over other apps", or while its accessibility service runs.
+         * the background with "Display over other apps".
          */
-        fun canPopUp(context: Context): Boolean =
-            Settings.canDrawOverlays(context) || app.selfup.focus.BlockerService.isEnabled(context)
+        fun canPopUp(context: Context): Boolean = Settings.canDrawOverlays(context)
 
         fun overlaySettings(context: Context): Intent = Intent(
             Settings.ACTION_MANAGE_OVERLAY_PERMISSION,

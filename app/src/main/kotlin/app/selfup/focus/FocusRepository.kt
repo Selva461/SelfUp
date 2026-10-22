@@ -58,7 +58,7 @@ class FocusRepository(
     private val tracking: TrackingDao,
     private val clock: Clock = life.clock,
     private val boundary: DayBoundary = life.dayBoundary,
-    /** Whether the blocker's accessibility service is switched on. */
+    /** Whether the app lock is switched on. */
     private val blockerEnabled: () -> Boolean = { false },
 ) {
     @Volatile private var cachedApps: Set<String>? = null
