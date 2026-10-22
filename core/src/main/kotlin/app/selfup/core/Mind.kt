@@ -9,12 +9,22 @@ public enum class MindGame(
     public val trains: String,
     public val unit: String,
     public val better: Metric.Better,
+    /**
+     * The score a strong adult reaches, which is the bar for full XP until your own best
+     * passes it. After that your best is the bar.
+     */
+    public val baseline: Double,
+    /**
+     * Whether a run's answers count towards its performance. Digit span and grid recall
+     * always end on two misses, by design, so for them only the score counts.
+     */
+    public val scoresAccuracy: Boolean,
 ) {
-    DIGIT_SPAN("digit_span", "Digit span", "Short-term memory", "digits", Metric.Better.HIGHER),
-    N_BACK("n_back", "N-back", "Working memory", "N", Metric.Better.HIGHER),
-    SPEED_MATH("speed_math", "Speed math", "Mental arithmetic", "per min", Metric.Better.HIGHER),
-    GRID_RECALL("grid_recall", "Grid recall", "Visual memory", "cells", Metric.Better.HIGHER),
-    REACTION("reaction", "Reaction", "Processing speed", "ms", Metric.Better.LOWER),
+    DIGIT_SPAN("digit_span", "Digit span", "Short-term memory", "digits", Metric.Better.HIGHER, baseline = 7.0, scoresAccuracy = false),
+    N_BACK("n_back", "N-back", "Working memory", "N", Metric.Better.HIGHER, baseline = 3.0, scoresAccuracy = true),
+    SPEED_MATH("speed_math", "Speed math", "Mental arithmetic", "per min", Metric.Better.HIGHER, baseline = 30.0, scoresAccuracy = true),
+    GRID_RECALL("grid_recall", "Grid recall", "Visual memory", "cells", Metric.Better.HIGHER, baseline = 8.0, scoresAccuracy = false),
+    REACTION("reaction", "Reaction", "Processing speed", "ms", Metric.Better.LOWER, baseline = 250.0, scoresAccuracy = true),
     ;
 
     public fun isBetter(candidate: Double, best: Double): Boolean = when (better) {
@@ -30,21 +40,64 @@ public enum class MindGame(
     }
 }
 
+/**
+ * One finished game. [score] is the game's headline number; [correct] of [attempts] are its
+ * answers: rounds repeated right, trials judged right, sums solved, taps that counted.
+ */
+public data class MindRun(val score: Double, val correct: Int = 0, val attempts: Int = 0) {
+    init {
+        require(attempts >= 0 && correct in 0..attempts) { "$correct of $attempts answers is invalid" }
+    }
+
+    /** Share of answers that were right; 1 when the game had none to judge. */
+    val accuracy: Double get() = if (attempts == 0) 1.0 else correct.toDouble() / attempts
+}
+
 public object MindRules {
-    /** XP for the first finished game of each kind per day. */
+    /** XP for a perfect first game of each kind per day. Less for less; a bad game costs 1. */
     public const val SESSION_XP: Int = 10
 
     /** Bonus for beating a game's personal best. */
     public const val BEST_XP: Int = 15
 
+    /** A new best only earns its bonus when this share of the run's answers were right. */
+    public const val BEST_MIN_ACCURACY: Double = 0.9
+
     /** Games in a 10-minute session, rotating by day so all five get played across the week. */
     public const val SESSION_GAMES: Int = 3
 
-    public fun xpFor(game: MindGame, score: Double, history: List<Double>, playedToday: Boolean): Int {
-        val first = if (playedToday) 0 else SESSION_XP
-        val best = history.reduceOrNull { a, b -> if (game.isBetter(b, a)) b else a }
-        val bonus = if (best != null && game.isBetter(score, best)) BEST_XP else 0
-        return first + bonus
+    public fun best(game: MindGame, history: List<Double>): Double? =
+        history.reduceOrNull { a, b -> if (game.isBetter(b, a)) b else a }
+
+    /** The score that counts as fully up to the mark: your best, or the baseline while your best is below it. */
+    public fun target(game: MindGame, history: List<Double>): Double {
+        val best = best(game, history) ?: return game.baseline
+        return if (game.isBetter(best, game.baseline)) best else game.baseline
+    }
+
+    /**
+     * How [run] measured up, 0 to 1: its score against [target], times its accuracy for games
+     * that judge answers. 1 needs the target matched with every answer right.
+     */
+    public fun performance(game: MindGame, run: MindRun, history: List<Double>): Double {
+        val target = target(game, history)
+        val score = when (game.better) {
+            Metric.Better.HIGHER -> Performance.atLeast(run.score, target)
+            Metric.Better.LOWER -> if (run.score <= 0) 0.0 else Performance.atMost(run.score, target)
+        }
+        return if (game.scoresAccuracy) score * run.accuracy else score
+    }
+
+    /**
+     * XP for [run]. Only the first game of each kind per day is scored, so replaying until it
+     * goes well earns nothing extra; a new best still earns [BEST_XP] if the run was clean.
+     */
+    public fun xpFor(game: MindGame, run: MindRun, history: List<Double>, playedToday: Boolean): Int {
+        val scored = if (playedToday) 0 else Performance.xp(SESSION_XP, performance(game, run, history))
+        val best = best(game, history)
+        val clean = !game.scoresAccuracy || run.accuracy >= BEST_MIN_ACCURACY
+        val bonus = if (best != null && game.isBetter(run.score, best) && clean) BEST_XP else 0
+        return scored + bonus
     }
 
     /** Which games today's session plays: a rotating window over all five. */
@@ -129,11 +182,13 @@ public object NBack {
     public fun isTarget(seq: List<Char>, n: Int, i: Int): Boolean = i >= n && seq[i] == seq[i - n]
 
     /** Accuracy over the scorable trials (index n onwards). [pressed] has one entry per letter. */
-    public fun accuracy(seq: List<Char>, n: Int, pressed: List<Boolean>): Double {
+    public fun accuracy(seq: List<Char>, n: Int, pressed: List<Boolean>): Double =
+        right(seq, n, pressed).toDouble() / (seq.size - n)
+
+    /** Scorable trials judged right: a press on a match, or no press on a non-match. */
+    public fun right(seq: List<Char>, n: Int, pressed: List<Boolean>): Int {
         require(pressed.size == seq.size) { "One response per letter" }
-        val scorable = (n until seq.size)
-        val right = scorable.count { pressed[it] == isTarget(seq, n, it) }
-        return right.toDouble() / scorable.count()
+        return (n until seq.size).count { pressed[it] == isTarget(seq, n, it) }
     }
 
     /** The N for the next block: up after a pass, down after a poor block, never below 1. */

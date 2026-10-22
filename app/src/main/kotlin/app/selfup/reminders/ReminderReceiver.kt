@@ -46,7 +46,7 @@ class ReminderReceiver : BroadcastReceiver() {
         val quest = repository.getQuest(questId) ?: return
         // The quest may have been done, rescheduled or expired since the alarm was armed.
         if (repository.isDoneToday(questId) || !quest.schedule.isDueOn(repository.today())) return
-        if (!QuestNotifications.show(app, quest)) Log.w(TAG, "Notifications are blocked")
+        if (!QuestNotifications.show(app, quest, checked = repository.checkOf(quest) != null)) Log.w(TAG, "Notifications are blocked")
         // With the screen on and unlocked, pop the System window over whatever is open. When
         // it's off or locked, the notification's full-screen intent shows the same popup.
         if (PopupActivity.canPopUp(app) && isInUse(app)) {

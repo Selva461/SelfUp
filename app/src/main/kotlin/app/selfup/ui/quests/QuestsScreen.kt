@@ -62,6 +62,8 @@ fun QuestsScreen(
                         done = item.isDone,
                         onTap = { if (!item.isDone) onComplete(item.quest) },
                         onLongPress = { onEdit(item.quest) },
+                        check = item.check,
+                        earnedXp = item.earnedXp,
                     )
                 }
             }
@@ -78,7 +80,7 @@ fun QuestsScreen(
             }
         }
         item(key = "hint") {
-            MutedText("Tap a quest to complete it. Long-press to edit. Tap one under Not today to edit it.", Modifier.padding(start = 4.dp, top = 4.dp))
+            MutedText("Tap a quest to complete it; ones marked Auto the System checks itself. Long-press to edit. Tap one under Not today to edit it.", Modifier.padding(start = 4.dp, top = 4.dp))
         }
     }
 }

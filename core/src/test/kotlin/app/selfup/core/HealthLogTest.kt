@@ -49,7 +49,7 @@ class HealthLogTest {
             boundary = boundary,
         )
         assertEquals(
-            "date,time,type,detail\n2026-10-19,09:00,meal,Dosa\n2026-10-19,13:30,meal,\"Chapati, omelette\"\n",
+            "date,time,type,detail,quality\n2026-10-19,09:00,meal,Dosa,ok\n2026-10-19,13:30,meal,\"Chapati, omelette\",clean\n",
             csv.replace("\r\n", "\n"),
         )
     }

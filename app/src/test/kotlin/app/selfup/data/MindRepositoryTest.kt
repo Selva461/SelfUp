@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.selfup.core.DayBoundary
 import app.selfup.core.MindGame
+import app.selfup.core.MindRun
 import app.selfup.core.MindRules
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -55,19 +56,25 @@ class MindRepositoryTest {
         db.xpDao().totals().firstOrNull { it.stat == MindRepository.STAT.key }?.total ?: 0
 
     @Test
-    fun firstGameOfTheDayEarnsXpAndOnlyBeatingYourBestEarnsMore() = runTest {
-        val first = mind.record(MindGame.DIGIT_SPAN, 6.0)
-        assertEquals(MindRules.SESSION_XP, first.xp)
+    fun theFirstGameOfTheDayIsScoredAndOnlyBeatingYourBestEarnsMore() = runTest {
+        // Six digits against the baseline of seven: 0.86, which pays 6 of 10.
+        val first = mind.record(MindGame.DIGIT_SPAN, MindRun(6.0, 3, 5))
+        assertEquals(6, first.xp)
+        assertEquals(6.0 / 7, first.performance, 1e-9)
         assertNull(first.previousBest)
         assertFalse(first.isNewBest)
 
-        val same = mind.record(MindGame.DIGIT_SPAN, 6.0)
+        val same = mind.record(MindGame.DIGIT_SPAN, MindRun(6.0))
         assertEquals(0, same.xp)
 
-        val better = mind.record(MindGame.DIGIT_SPAN, 7.0)
+        val better = mind.record(MindGame.DIGIT_SPAN, MindRun(7.0))
         assertTrue(better.isNewBest)
         assertEquals(MindRules.BEST_XP, better.xp)
-        assertEquals((MindRules.SESSION_XP + MindRules.BEST_XP).toLong(), technicalXp())
+        assertEquals((6 + MindRules.BEST_XP).toLong(), technicalXp())
+
+        val stored = db.mindDao().forGame(MindGame.DIGIT_SPAN.key).first()
+        assertEquals(3, stored.correct)
+        assertEquals(5, stored.attempts)
 
         val summary = mind.observeSummaries().first().single { it.game == MindGame.DIGIT_SPAN }
         assertEquals(7.0, summary.best!!, 0.0)
@@ -78,11 +85,19 @@ class MindRepositoryTest {
     }
 
     @Test
+    fun aBadFirstGameCostsXpButNeverALevel() = runTest {
+        val bad = mind.record(MindGame.SPEED_MATH, MindRun(5.0, 5, 15))
+        // Nothing to lose yet: the loss is clamped to zero.
+        assertEquals(0, bad.xp)
+        assertEquals(0L, technicalXp())
+    }
+
+    @Test
     fun reactionBestIsTheLowestTime() = runTest {
-        mind.record(MindGame.REACTION, 260.0)
-        val slower = mind.record(MindGame.REACTION, 300.0)
+        mind.record(MindGame.REACTION, MindRun(260.0, 5, 5))
+        val slower = mind.record(MindGame.REACTION, MindRun(300.0, 5, 5))
         assertFalse(slower.isNewBest)
-        val faster = mind.record(MindGame.REACTION, 230.0)
+        val faster = mind.record(MindGame.REACTION, MindRun(230.0, 5, 5))
         assertTrue(faster.isNewBest)
         assertEquals(230.0, mind.observeSummaries().first().single { it.game == MindGame.REACTION }.best!!, 0.0)
     }

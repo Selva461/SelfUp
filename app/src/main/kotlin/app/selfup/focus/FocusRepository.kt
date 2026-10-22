@@ -1,6 +1,8 @@
 package app.selfup.focus
 
+import app.selfup.core.AutoCheck
 import app.selfup.core.DayBoundary
+import app.selfup.core.Performance
 import app.selfup.core.Quest
 import app.selfup.core.ScreenTime
 import app.selfup.core.Stat
@@ -25,6 +27,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.util.Locale
 
 /** Today's entertainment use, for the Home window. */
 data class ScreenToday(
@@ -40,10 +43,15 @@ data class ScreenToday(
 
 /** What settling yesterday's screen time did. */
 data class FocusReport(
-    val verified: List<Quest> = emptyList(),
+    /** "Phone off" quests the usage log completed, with how well each went. */
+    val verified: List<Pair<Quest, Double>> = emptyList(),
+    /** Ones it failed: the phone was used too much after the cutoff. */
+    val failed: List<Quest> = emptyList(),
+    /** Life XP for the day's entertainment use; negative for a day far over budget. */
     val bonusXp: Int = 0,
+    val usedMinutes: Int = 0,
 ) {
-    val isEmpty: Boolean get() = verified.isEmpty() && bonusXp == 0
+    val isEmpty: Boolean get() = verified.isEmpty() && failed.isEmpty() && bonusXp == 0
 }
 
 /**
@@ -105,18 +113,27 @@ class FocusRepository(
         )
         val used = (summary.entertainmentMillis / 60_000).toInt()
 
-        val verified = life.dailiesDueOn(yesterday).filter { quest ->
-            val cutoff = ScreenTime.cutoff(quest.title) ?: return@filter false
-            ScreenTime.stayedOff(events, yesterday, cutoff, boundary) &&
-                life.completeVerified(quest.id, yesterday) is CompletionResult.Completed
+        val verified = mutableListOf<Pair<Quest, Double>>()
+        val failed = mutableListOf<Quest>()
+        life.dailiesDueOn(yesterday).filter { life.checkOf(it) == AutoCheck.PHONE_OFF }.forEach { quest ->
+            val cutoff = ScreenTime.cutoff(quest.title) ?: return@forEach
+            val off = ScreenTime.offPerformance(events, yesterday, cutoff, boundary)
+            val detail = "cutoff=$cutoff opens=${off.opens} minutes=${String.format(Locale.ROOT, "%.1f", off.minutes)}"
+            when (life.verify(quest.id, yesterday, AutoCheck.PHONE_OFF, off.performance, detail)) {
+                is CompletionResult.Completed -> {
+                    verified += quest to off.performance
+                    log(FocusEventKind.VERIFIED, day, questId = quest.id, minutesUsed = used)
+                }
+                is CompletionResult.Failed -> failed += quest
+                else -> Unit
+            }
         }
-        verified.forEach { log(FocusEventKind.VERIFIED, day, questId = it.id, minutesUsed = used) }
-        val bonus = if (used < ScreenTime.DAILY_BUDGET_MINUTES) ScreenTime.UNDER_BUDGET_XP else 0
-        if (bonus > 0) {
+        val bonus = Performance.xp(ScreenTime.UNDER_BUDGET_XP, ScreenTime.budgetPerformance(used))
+        if (bonus != 0) {
             life.grantBonus(Stat.LIFE, bonus, yesterday, XpReason.FOCUS)
             log(FocusEventKind.BONUS, day, minutesUsed = used)
         }
-        FocusReport(verified, bonus)
+        FocusReport(verified, failed, bonus, used)
     }
 
     /** Entertainment minutes so far today, per app. */

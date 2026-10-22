@@ -101,4 +101,32 @@ class ScreenTimeTest {
         assertEquals(at("07:00"), summary.firstUse)
         assertEquals(at("01:02", day.plusDays(1)), summary.lastUse)
     }
+
+    @Test
+    fun `screen time pays in full only near zero and costs XP far over`() {
+        assertEquals(1.0, ScreenTime.budgetPerformance(0))
+        assertEquals(1.0, ScreenTime.budgetPerformance(ScreenTime.FREE_MINUTES))
+        assertEquals(0.8, ScreenTime.budgetPerformance(10), 1e-9)
+        assertEquals(0.0, ScreenTime.budgetPerformance(45))
+        assertEquals(10, Performance.xp(ScreenTime.UNDER_BUDGET_XP, ScreenTime.budgetPerformance(3)))
+        assertEquals(5, Performance.xp(ScreenTime.UNDER_BUDGET_XP, ScreenTime.budgetPerformance(10)))
+        assertEquals(-1, Performance.xp(ScreenTime.UNDER_BUDGET_XP, ScreenTime.budgetPerformance(25)))
+    }
+
+    @Test
+    fun `phone off is perfect untouched and loses for each open and minute after the cutoff`() {
+        val cutoff = LocalTime.of(23, 0)
+        val next = day.plusDays(1)
+        val clean = listOf(on(insta, "22:00"), off(insta, "22:50"))
+        assertEquals(1.0, ScreenTime.offPerformance(clean, day, cutoff, boundary).performance)
+
+        val peek = clean + listOf(on("com.whatsapp", "23:30"), off("com.whatsapp", "23:33"))
+        val result = ScreenTime.offPerformance(peek, day, cutoff, boundary)
+        assertEquals(1, result.opens)
+        assertEquals(3.0, result.minutes, 1e-9)
+        assertEquals(1 - ScreenTime.OPEN_COST - 3.0 / ScreenTime.LATE_MINUTES_TO_FAIL, result.performance, 1e-9)
+
+        val scroll = clean + listOf(on(insta, "00:10", next), off(insta, "01:00", next))
+        assertEquals(0.0, ScreenTime.offPerformance(scroll, day, cutoff, boundary).performance)
+    }
 }

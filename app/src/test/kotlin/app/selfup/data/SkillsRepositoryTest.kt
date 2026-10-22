@@ -54,21 +54,23 @@ class SkillsRepositoryTest {
         db.xpDao().totals().firstOrNull { it.stat == Stat.TECHNICAL.key }?.total ?: 0
 
     @Test
-    fun passingEarnsXpOnceADayAndSpacedStrongScoresMakeSolid() = runTest {
+    fun theFirstQuizOfTheDayIsScoredAndSpacedStrongScoresMakeSolid() = runTest {
         val read = skills.read("java.hashmap")
         assertEquals(Mastery.MET, read.after)
         assertEquals(0, read.xp)
 
+        // 4/5 isn't perfect: 5 XP, not the full 10.
         val first = skills.quiz("java.hashmap", 4, 5)
         assertEquals(Mastery.RECALLED, first.after)
-        assertEquals(SkillRules.QUIZ_XP, first.xp)
+        assertEquals(5, first.xp)
 
+        // A perfect retake the same day earns nothing: the first try counts.
         val retake = skills.quiz("java.hashmap", 5, 5)
         assertEquals(0, retake.xp)
-        assertEquals(SkillRules.QUIZ_XP.toLong(), technicalXp())
+        assertEquals(5L, technicalXp())
 
         now += Duration.ofDays(3)
-        val spaced = skills.quiz("java.hashmap", 4, 5)
+        val spaced = skills.quiz("java.hashmap", 5, 5)
         assertEquals(Mastery.SOLID, spaced.after)
         assertTrue(spaced.masteryUp)
         assertEquals(SkillRules.QUIZ_XP + SkillRules.MASTERY_BONUS_XP, spaced.xp)

@@ -63,18 +63,21 @@ class SkillsRepository(
         val earned = SkillRules.xpFor(before, event, history.filter { it.day == day })
 
         skills.insert(event.toEntity(conceptId, now.toEpochMilli()))
-        val changes = if (earned > 0) grant(pack.stat, earned, day, now.toEpochMilli()) else emptyList()
-        SkillResult(conceptId, before.mastery, after.mastery, earned, changes)
+        val changes = if (earned != 0) grant(pack.stat, earned, day, now.toEpochMilli()) else emptyList()
+        SkillResult(conceptId, before.mastery, after.mastery, changes.sumOf { it.delta }, changes)
     }
 
+    /** Grants [delta]; a loss from a bad quiz is clamped so it never costs a level. */
     private suspend fun grant(stat: Stat, delta: Int, day: LocalDate, atMillis: Long): List<StatChange> {
         val totals = xp.totals().associate { Stat.fromKey(it.stat) to it.total }
-        val changes = XpRules.apply(totals, mapOf(stat to delta))
+        val settled = XpRules.settle(totals[stat] ?: 0, delta)
+        if (settled == 0) return emptyList()
+        val changes = XpRules.apply(totals, mapOf(stat to settled))
         xp.insertAll(
             listOf(
                 XpEventEntity(
                     stat = stat.key,
-                    delta = delta,
+                    delta = settled,
                     reason = XpReason.SKILL,
                     questId = null,
                     completionId = null,

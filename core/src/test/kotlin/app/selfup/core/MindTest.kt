@@ -96,12 +96,43 @@ class MindTest {
     }
 
     @Test
-    fun `xp once a day per game plus a bonus for a new best`() {
-        assertEquals(MindRules.SESSION_XP, MindRules.xpFor(MindGame.DIGIT_SPAN, 6.0, emptyList(), playedToday = false))
-        assertEquals(MindRules.SESSION_XP + MindRules.BEST_XP, MindRules.xpFor(MindGame.DIGIT_SPAN, 7.0, listOf(5.0, 6.0), false))
-        assertEquals(0, MindRules.xpFor(MindGame.DIGIT_SPAN, 6.0, listOf(6.0), playedToday = true))
+    fun `full xp only for a perfect run, less for less, and a loss for a bad one`() {
+        // No history: the baseline (7 digits) is the bar.
+        assertEquals(MindRules.SESSION_XP, MindRules.xpFor(MindGame.DIGIT_SPAN, MindRun(7.0), emptyList(), playedToday = false))
+        assertEquals(1, MindRules.xpFor(MindGame.DIGIT_SPAN, MindRun(3.5), emptyList(), playedToday = false))
+        assertEquals(-1, MindRules.xpFor(MindGame.DIGIT_SPAN, MindRun(2.0), emptyList(), playedToday = false))
+        // Speed math at target but with mistakes is not perfect.
+        assertEquals(MindRules.SESSION_XP, MindRules.xpFor(MindGame.SPEED_MATH, MindRun(30.0, 30, 30), emptyList(), false))
+        assertEquals(7, MindRules.xpFor(MindGame.SPEED_MATH, MindRun(30.0, 30, 33), emptyList(), false))
+    }
+
+    @Test
+    fun `your best becomes the bar once it passes the baseline`() {
+        assertEquals(9.0, MindRules.target(MindGame.DIGIT_SPAN, listOf(6.0, 9.0)))
+        assertEquals(7.0, MindRules.target(MindGame.DIGIT_SPAN, listOf(5.0)))
+        assertEquals(220.0, MindRules.target(MindGame.REACTION, listOf(300.0, 220.0)))
+        assertEquals(1.0, MindRules.performance(MindGame.DIGIT_SPAN, MindRun(9.0), listOf(9.0)))
+        assertEquals(8.0 / 9.0, MindRules.performance(MindGame.DIGIT_SPAN, MindRun(8.0), listOf(9.0)), 1e-9)
+        // Reaction: lower is better, and false starts cut accuracy.
+        assertEquals(250.0 / 300.0 * 5 / 6, MindRules.performance(MindGame.REACTION, MindRun(300.0, 5, 6), emptyList()), 1e-9)
+    }
+
+    @Test
+    fun `only the first game of the day is scored, and a new best needs a clean run`() {
+        assertEquals(0, MindRules.xpFor(MindGame.DIGIT_SPAN, MindRun(6.0), listOf(6.0), playedToday = true))
+        assertEquals(MindRules.SESSION_XP + MindRules.BEST_XP, MindRules.xpFor(MindGame.DIGIT_SPAN, MindRun(8.0), listOf(5.0, 7.0), false))
         // Lower is better for reaction.
-        assertEquals(MindRules.BEST_XP, MindRules.xpFor(MindGame.REACTION, 230.0, listOf(260.0), playedToday = true))
+        assertEquals(MindRules.BEST_XP, MindRules.xpFor(MindGame.REACTION, MindRun(230.0, 5, 5), listOf(260.0), playedToday = true))
+        // A faster median with half the taps false starts earns no best bonus.
+        assertEquals(0, MindRules.xpFor(MindGame.REACTION, MindRun(230.0, 5, 10), listOf(260.0), playedToday = true))
+    }
+
+    @Test
+    fun `n-back counts right trials`() {
+        val n = 2
+        val seq = NBack.block(n, Random(3))
+        val perfect = seq.indices.map { NBack.isTarget(seq, n, it) }
+        assertEquals(NBack.TRIALS, NBack.right(seq, n, perfect))
     }
 
     @Test

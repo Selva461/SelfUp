@@ -175,6 +175,10 @@ class MigrationTest {
             assertEquals(1, migrated.goalDao().withState(GoalState.ACTIVE).size)
             migrated.trackingDao().putPhoneDay(PhoneDayEntity(0, null, null, 0, 0, 0, 0))
             assertEquals(0, migrated.trackingDao().phoneDay(0)?.opens)
+            migrated.healthDao().insertMeal(MealLogEntity(atMillis = 0, food = "Oats", quality = "clean"))
+            assertEquals("clean", migrated.healthDao().allMeals().single().quality)
+            migrated.trackingDao().insertAutoCheck(AutoCheckEntity(epochDay = 0, questId = 1, kind = "GYM", performance = 0.5, detail = "", xp = 2, atMillis = 0))
+            assertEquals(1, migrated.trackingDao().autoChecksOn(0).size)
         } finally {
             migrated.close()
         }
@@ -189,6 +193,21 @@ class MigrationTest {
         execSQL("DROP TABLE app_usage_day")
         execSQL("DROP TABLE phone_day")
         execSQL("DROP TABLE focus_event")
+        execSQL("DROP TABLE auto_check")
+        execSQL("DROP TABLE gym_session_score")
+        execSQL("DROP TABLE work_log")
+        // v10 added columns to tables v1 already had; rebuild those as v1 made them.
+        execSQL("DROP TABLE completion")
+        execSQL(
+            "CREATE TABLE `completion` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `questId` INTEGER NOT NULL, " +
+                "`epochDay` INTEGER NOT NULL, `completedAtMillis` INTEGER NOT NULL, `value` REAL, " +
+                "FOREIGN KEY(`questId`) REFERENCES `quest`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        )
+        execSQL("CREATE UNIQUE INDEX `index_completion_questId_epochDay` ON `completion` (`questId`, `epochDay`)")
+        execSQL("CREATE INDEX `index_completion_epochDay` ON `completion` (`epochDay`)")
+        execSQL("DROP TABLE meal_log")
+        execSQL("CREATE TABLE `meal_log` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `atMillis` INTEGER NOT NULL, `food` TEXT NOT NULL)")
+        execSQL("CREATE INDEX `index_meal_log_atMillis` ON `meal_log` (`atMillis`)")
         // v1 had gas_log; the 7 -> 8 migration drops it again.
         execSQL("CREATE TABLE gas_log (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `atMillis` INTEGER NOT NULL, `level` INTEGER NOT NULL)")
         version = 1

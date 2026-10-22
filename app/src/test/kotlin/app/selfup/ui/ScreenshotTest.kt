@@ -170,7 +170,7 @@ class ScreenshotTest {
             )
         }
         val spend = (13 downTo 0).map { today.minusDays(it.toLong()) to listOf(0.0, 240.0, 120.0, 560.0, 90.0)[it % 5] }
-        LogScreen(LogState(days = days, spend = spend), DayBoundary(LocalTime.of(4, 0), zone), padding, onMeal = {}, onShare = {})
+        LogScreen(LogState(days = days, spend = spend), DayBoundary(LocalTime.of(4, 0), zone), padding, onMeal = { _, _ -> }, onShare = {})
     }
 
     @Test

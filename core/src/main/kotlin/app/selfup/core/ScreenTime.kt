@@ -17,8 +17,27 @@ public object ScreenTime {
     /** Daily budget for entertainment apps together. Past it, the blocker locks them. */
     public const val DAILY_BUDGET_MINUTES: Int = 30
 
-    /** Life XP for a day that stayed within the budget. A reward, never a penalty. */
+    /**
+     * Life XP for a day's entertainment use, scored by [budgetPerformance]: full only at
+     * [FREE_MINUTES] or less, falling away towards the budget, and a loss past about
+     * two-thirds of it.
+     */
     public const val UNDER_BUDGET_XP: Int = 10
+
+    /** Entertainment minutes that still count as a clean day: a reply in a chat that opened a feed. */
+    public const val FREE_MINUTES: Int = 5
+
+    /** A day's entertainment use against the budget, 0 to 1. */
+    public fun budgetPerformance(usedMinutes: Int, budget: Int = DAILY_BUDGET_MINUTES): Double {
+        if (usedMinutes <= FREE_MINUTES) return 1.0
+        return ((budget - usedMinutes).toDouble() / (budget - FREE_MINUTES)).coerceIn(0.0, 1.0)
+    }
+
+    /** Each app opened after a cutoff takes this much off a "Phone off" quest. */
+    public const val OPEN_COST: Double = 0.15
+
+    /** Minutes of use after a cutoff that wipe out a "Phone off" quest entirely. */
+    public const val LATE_MINUTES_TO_FAIL: Double = 30.0
 
     /** Feed, video and reading apps, by package. Games are added on the phone by app category. */
     public val scrollApps: Map<String, String> = linkedMapOf(
@@ -145,8 +164,26 @@ public object ScreenTime {
         return events.none { it.kind == UsageKind.RESUMED && !it.at.isBefore(from) && it.at.isBefore(to) }
     }
 
+    /**
+     * How well the phone stayed down from [cutoff] on [day] until that quest day ended, 0
+     * to 1: untouched is perfect; each app opened costs [OPEN_COST] and every minute of use
+     * a share of [LATE_MINUTES_TO_FAIL].
+     */
+    public fun offPerformance(events: List<UsageEvent>, day: LocalDate, cutoff: LocalTime, boundary: DayBoundary): OffResult {
+        val from = ReminderPlanner.instantOn(day, cutoff, boundary)
+        val to = boundary.startOf(day.plusDays(1))
+        val inWindow = events.filter { !it.at.isBefore(from) && it.at.isBefore(to) }
+        val opens = inWindow.count { it.kind == UsageKind.RESUMED }
+        val minutes = foregroundMillis(inWindow, from, to, packages = null).values.sum() / 60_000.0
+        val performance = if (opens == 0) 1.0 else (1 - OPEN_COST * opens - minutes / LATE_MINUTES_TO_FAIL).coerceIn(0.0, 1.0)
+        return OffResult(opens, minutes, performance)
+    }
+
     private val CUTOFF = Regex("""(?i)\b(phone off|phone down|in bed|no phone|screen off|screens off)\b.*?\bby\s+(\d{1,2})[:.](\d{2})""")
 }
+
+/** What happened after a "Phone off by" cutoff. */
+public data class OffResult(val opens: Int, val minutes: Double, val performance: Double)
 
 public data class AppUse(val foregroundMillis: Long, val opens: Int, val entertainment: Boolean)
 

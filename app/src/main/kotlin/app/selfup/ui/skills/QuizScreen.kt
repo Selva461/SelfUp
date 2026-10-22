@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.selfup.core.Concept
 import app.selfup.core.Question
+import app.selfup.core.Performance
 import app.selfup.core.SkillRules
 import app.selfup.ui.components.GroupSeparator
 import app.selfup.ui.components.PrimaryButton
@@ -321,6 +322,11 @@ private fun ScoreStep(concept: Concept, correct: Int, accent: Color, isLast: Boo
             Text("$correct/${SkillRules.QUIZ_LENGTH}", style = MaterialTheme.typography.displayMedium)
         }
         Text(verdict, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            "${Performance.label(fraction)}. Full XP only for ${SkillRules.QUIZ_LENGTH}/${SkillRules.QUIZ_LENGTH}; the first try of the day is the one that counts.",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Box(Modifier.weight(1f))
         PrimaryButton(if (isLast) "Finish" else "Next concept", accent, onContinue)
     }

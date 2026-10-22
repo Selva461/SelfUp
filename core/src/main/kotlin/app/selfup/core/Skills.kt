@@ -119,7 +119,11 @@ public object SkillRules {
     /** Days until the next review after 0, 1, 2… passes: expanding gaps, the core of spaced retrieval. */
     public val REVIEW_INTERVALS: List<Long> = listOf(1, 3, 7, 14, 30)
 
-    /** XP for the first passed quiz of a concept on a day. Retakes the same day earn nothing. */
+    /**
+     * XP for a perfect first quiz of a concept on a day. Fewer right earns less (see
+     * [Performance]): 4/5 earns 5, 3/5 earns 2, and 1/5 or 0/5 costs 1. Retakes the same day
+     * earn nothing, so the first attempt is the one that counts.
+     */
     public const val QUIZ_XP: Int = 10
 
     /** Bonus for reaching Solid, Applied or Teachable. */
@@ -165,13 +169,13 @@ public object SkillRules {
 
     /**
      * XP earned by [event], given the state before it and the events already logged today
-     * for the same concept. Passing earns [QUIZ_XP] once a day; reaching Solid, Applied or
-     * Teachable adds [MASTERY_BONUS_XP].
+     * for the same concept. The day's first quiz is scored by its share right (see
+     * [QUIZ_XP]); reaching Solid, Applied or Teachable adds [MASTERY_BONUS_XP].
      */
     public fun xpFor(before: ConceptState, event: SkillEvent, earlierToday: List<SkillEvent>): Int {
         val after = apply(before, event)
-        val passedAlready = earlierToday.any { it is SkillEvent.Quiz && it.fraction >= PASS }
-        val quizXp = if (event is SkillEvent.Quiz && event.fraction >= PASS && !passedAlready) QUIZ_XP else 0
+        val quizzedAlready = earlierToday.any { it is SkillEvent.Quiz }
+        val quizXp = if (event is SkillEvent.Quiz && !quizzedAlready) Performance.xp(QUIZ_XP, event.fraction) else 0
         val bonus = if (after.mastery > before.mastery && after.mastery.level >= Mastery.SOLID.level) MASTERY_BONUS_XP else 0
         return quizXp + bonus
     }

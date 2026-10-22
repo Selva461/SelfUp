@@ -73,6 +73,11 @@ data class CompletionEntity(
     val completedAtMillis: Long,
     /** The logged number for a logging quest, such as rupees spent. */
     val value: Double?,
+    /**
+     * How well it went, 0 to 1, when the System scored it (a checked quest or a spend held
+     * against your typical day); null for a plain tap, which earns the full reward.
+     */
+    val performance: Double? = null,
 )
 
 /**
@@ -118,6 +123,8 @@ data class MealLogEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val atMillis: Long,
     val food: String,
+    /** A [app.selfup.core.FoodQuality] key; null on meals logged before quality existed, which are guessed from [food]. */
+    val quality: String? = null,
 )
 
 data class DailySpendRow(
@@ -184,6 +191,11 @@ data class MindScoreEntity(
     val epochDay: Long,
     val atMillis: Long,
     val xpAwarded: Int,
+    /** Answers right and judged in the run (see [app.selfup.core.MindRun]); null before v10. */
+    val correct: Int? = null,
+    val attempts: Int? = null,
+    /** How the run measured up against its target, 0 to 1; null before v10. */
+    val performance: Double? = null,
 )
 
 /**
@@ -211,6 +223,62 @@ object GoalState {
     const val DROPPED = "dropped"
 }
 
+/**
+ * Every time the System checked a quest itself: what it measured, the verdict and the XP.
+ * [detail] holds the numbers behind the verdict, such as "opens=2 minutes=4.5".
+ */
+@Entity(tableName = "auto_check", indices = [Index("epochDay")])
+data class AutoCheckEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val epochDay: Long,
+    val questId: Long,
+    /** An [app.selfup.core.AutoCheck] name. */
+    val kind: String,
+    val performance: Double,
+    val detail: String,
+    /** XP the completion earned; 0 when the verdict was a fail and the quest was left missed. */
+    val xp: Int,
+    val atMillis: Long,
+)
+
+/** One Gym workout as the System scored it, with each part of the verdict. Re-scored as the session grows. */
+@Entity(tableName = "gym_session_score")
+data class GymSessionScoreEntity(
+    @PrimaryKey val sessionId: Long,
+    val epochDay: Long,
+    val startMillis: Long,
+    val endMillis: Long,
+    val sets: Int,
+    val volumeKg: Double,
+    val comparedTo: Long?,
+    val setsPart: Double,
+    val volumePart: Double,
+    val strengthPart: Double,
+    val performance: Double,
+    val scoredAtMillis: Long,
+)
+
+/** Something you built, as a judge scored it from a work code. [fingerprint] stops the same code paying twice. */
+@Entity(tableName = "work_log", indices = [Index(value = ["fingerprint"], unique = true)])
+data class WorkLogEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val fingerprint: String,
+    val title: String,
+    val stat: String,
+    val difficulty: Int,
+    val quality: Int,
+    val completeness: Int,
+    val ownership: Int,
+    val hours: Double?,
+    val judge: String,
+    val note: String,
+    val performance: Double,
+    val xpAwarded: Int,
+    val epochDay: Long,
+    val atMillis: Long,
+    val code: String,
+)
+
 object XpReason {
     const val COMPLETION = "completion"
     const val PENALTY = "penalty"
@@ -220,6 +288,10 @@ object XpReason {
     const val MIND = "mind"
     const val GOAL = "goal"
     const val FOCUS = "focus"
+
+    /** A checked quest's XP moved because its verdict changed (a gym session that grew). */
+    const val RESCORE = "rescore"
+    const val WORK = "work"
 }
 
 /** How each closed quest day went, one row per day: the streak's audit trail. */

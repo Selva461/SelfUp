@@ -23,8 +23,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.selfup.core.AutoCheck
 import app.selfup.core.CompletionInput
 import app.selfup.core.Quest
+import app.selfup.core.Stat
 import app.selfup.core.XpRules
 import app.selfup.ui.theme.SystemColors
 import app.selfup.ui.theme.color
@@ -33,7 +35,9 @@ import app.selfup.ui.theme.glow
 /**
  * One quest, as a goal line in a quest window: a check, the title with its stats and reward,
  * and the System's [0/1] counter. Tap completes it (logging quests open a number entry
- * first), long-press edits it. A make-up quest is marked as a penalty, in red.
+ * first), long-press edits it. A make-up quest is marked as a penalty, in red. A quest the
+ * System checks itself ([check]) is marked Auto and shows its reward as a ceiling; once
+ * done, the row shows what was actually [earnedXp].
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -44,7 +48,15 @@ fun QuestRow(
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
     showCounter: Boolean = true,
+    check: AutoCheck? = null,
+    earnedXp: Int? = null,
 ) {
+    val full = XpRules.completionXp(quest.difficulty)
+    val reward = when {
+        done && earnedXp != null -> if (earnedXp >= 0) "+$earnedXp XP" else "−${-earnedXp} XP"
+        check != null || quest.input is CompletionInput.Number && Stat.MONEY in quest.stats -> "Up to +$full XP"
+        else -> "+$full XP"
+    }
     val stats = quest.stats.sortedBy { it.ordinal }
     val penalty = quest.penaltyFor != null
     val accent = if (penalty) SystemColors.Danger else stats.first().color
@@ -68,7 +80,8 @@ fun QuestRow(
                 contentDescription = buildString {
                     append(quest.title)
                     if (penalty) append(", penalty quest")
-                    append(if (done) ", done" else ", ${XpRules.completionXp(quest.difficulty)} XP")
+                    if (check != null) append(", checked by the System from the ${check.source.lowercase()}")
+                    append(if (done) ", done, $reward" else ", $reward")
                 }
             },
         verticalAlignment = Alignment.CenterVertically,
@@ -86,8 +99,9 @@ fun QuestRow(
             )
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (penalty) Tag("Penalty", SystemColors.Danger)
+                if (check != null) Tag("Auto", SystemColors.Blue)
                 Text(
-                    "+${XpRules.completionXp(quest.difficulty)} XP",
+                    reward,
                     style = MaterialTheme.typography.labelSmall,
                     color = if (done) SystemColors.TextMuted else accent,
                     maxLines = 1,

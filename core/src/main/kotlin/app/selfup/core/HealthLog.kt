@@ -5,8 +5,13 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
-/** A meal, logged with one tap at the time it was eaten. */
-public data class MealEntry(val id: Long = 0, val at: Instant, val food: String) {
+/** A meal, logged with one tap at the time it was eaten. [quality] is guessed from the name unless set. */
+public data class MealEntry(
+    val id: Long = 0,
+    val at: Instant,
+    val food: String,
+    val quality: FoodQuality = Nutrition.classify(food),
+) {
     init {
         require(food.isNotBlank()) { "A meal needs a name" }
     }
@@ -55,17 +60,16 @@ public object HealthLog {
     }
 
     /**
-     * A plain CSV of every meal, oldest first, for sharing: `date,time,type,detail`.
+     * A plain CSV of every meal, oldest first, for sharing: `date,time,type,detail,quality`.
      */
     public fun toCsv(meals: List<MealEntry>, boundary: DayBoundary): String {
         val date = DateTimeFormatter.ISO_LOCAL_DATE
         val time = DateTimeFormatter.ofPattern("HH:mm")
-        val rows = meals.map { Triple(it.at, "meal", csvField(it.food)) }
         return buildString {
-            appendLine("date,time,type,detail")
-            rows.sortedBy { it.first }.forEach { (at, type, detail) ->
-                val local = at.atZone(boundary.zone)
-                appendLine("${local.format(date)},${local.toLocalTime().format(time)},$type,$detail")
+            appendLine("date,time,type,detail,quality")
+            meals.sortedBy { it.at }.forEach { meal ->
+                val local = meal.at.atZone(boundary.zone)
+                appendLine("${local.format(date)},${local.toLocalTime().format(time)},meal,${csvField(meal.food)},${meal.quality.key}")
             }
         }
     }

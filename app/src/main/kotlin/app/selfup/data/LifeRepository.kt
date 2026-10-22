@@ -1,13 +1,17 @@
 package app.selfup.data
 
 import androidx.room.withTransaction
+import app.selfup.core.AutoCheck
 import app.selfup.core.CompletionInput
 import app.selfup.core.DailyReset
 import app.selfup.core.DayOutcome
 import app.selfup.core.DayBoundary
 import app.selfup.core.DefaultQuests
+import app.selfup.core.Performance
 import app.selfup.core.Quest
+import app.selfup.core.QuestChecks
 import app.selfup.core.Schedule
+import app.selfup.core.Spending
 import app.selfup.core.Stat
 import app.selfup.core.StatChange
 import app.selfup.core.StatProgress
@@ -32,8 +36,16 @@ import java.time.LocalDate
 data class DayQuest(
     val quest: Quest,
     val completion: CompletionEntity?,
+    /** How the System checks it, or null when a tap completes it. */
+    val check: AutoCheck? = null,
 ) {
     val isDone: Boolean get() = completion != null
+
+    /** XP the completion earned, scored or full. */
+    val earnedXp: Int?
+        get() = completion?.let { c ->
+            c.performance?.let { XpRules.scoredDeltas(quest, it).values.sum() } ?: XpRules.completionXp(quest.difficulty)
+        }
 }
 
 /** What closing out finished quest days did, for telling the user. */
@@ -57,7 +69,21 @@ data class ReminderInput(
 )
 
 sealed interface CompletionResult {
-    data class Completed(val changes: List<StatChange>) : CompletionResult
+    /** [performance] is set when the System scored it rather than granting the full reward. */
+    data class Completed(val changes: List<StatChange>, val performance: Double? = null) : CompletionResult
+
+    /** A checked quest's verdict moved (a gym session that grew); [changes] is the difference. */
+    data class Rescored(val changes: List<StatChange>, val performance: Double) : CompletionResult
+
+    /** The data showed it wasn't done well enough, so it stays open (and is penalized if the day ends so). */
+    data class Failed(val performance: Double) : CompletionResult
+
+    /** The System checks this quest itself; a tap can't complete it. */
+    data class Automatic(val check: AutoCheck) : CompletionResult
+
+    /** The day was already settled before the data arrived. */
+    data object Closed : CompletionResult
+
     data object AlreadyDone : CompletionResult
     data object NotDue : CompletionResult
     data object NotFound : CompletionResult
@@ -100,7 +126,8 @@ class LifeRepository(
         quests.observeAll(),
         completions.observeOn(day.toEpochDay()),
         completions.observeFinishedOneTimeIds(),
-    ) { all, doneToday, finishedOneTime ->
+        meta.observe(GYM_LINKED_KEY),
+    ) { all, doneToday, finishedOneTime, gymLinked ->
         val byQuest = doneToday.associateBy { it.questId }
         val finished = finishedOneTime.toSet()
         all.map(QuestMapper::toDomain)
@@ -114,7 +141,17 @@ class LifeRepository(
                     else -> true
                 }
             }
-            .map { DayQuest(it, byQuest[it.id]) }
+            .map { DayQuest(it, byQuest[it.id], QuestChecks.of(it, gymConnected = gymLinked != null)) }
+    }
+
+    /** How [quest] is checked, given whether Gym is linked right now. */
+    suspend fun checkOf(quest: Quest): AutoCheck? = QuestChecks.of(quest, gymConnected = meta.get(GYM_LINKED_KEY) != null)
+
+    /** Records whether the Gym app is linked, which makes the gym quest checked rather than tapped. */
+    suspend fun setGymLinked(linked: Boolean) {
+        val current = meta.get(GYM_LINKED_KEY) != null
+        if (linked == current) return
+        if (linked) meta.put(MetaEntity(GYM_LINKED_KEY, "1")) else meta.delete(GYM_LINKED_KEY)
     }
 
     /** Every quest with a reminder, with today's state, re-emitted on any change. */
@@ -180,20 +217,83 @@ class LifeRepository(
         if (quest.input is CompletionInput.Number) {
             requireNotNull(value) { "\"${quest.title}\" needs a number to complete" }
         }
+        checkOf(quest)?.let { return@withTransaction CompletionResult.Automatic(it) }
 
-        complete(quest, dayBoundary.questDay(clock.instant()), value)
+        val day = dayBoundary.questDay(clock.instant())
+        val performance = if (value != null && Stat.MONEY in quest.stats) {
+            Spending.performance(value, completions.valuesBefore(questId, day.toEpochDay()))
+        } else {
+            null
+        }
+        complete(quest, day, value, performance)
     }
 
     /**
-     * Completes [questId] for a day that has already ended, when the System verified it
-     * itself (a "Phone off by 23:00" quest checked against the usage log). Call it before
-     * [closeFinishedDays] settles that day, or the miss is penalized first.
+     * Sets [questId]'s completion on [day] to what the System measured: completed with XP for
+     * [performance], re-scored when an earlier verdict moved (the difference is granted or
+     * taken back), or left open when the performance fails. Each new or changed verdict is
+     * logged to auto_check with [detail]. A hand-tapped completion is left alone, and a day
+     * [closeFinishedDays] already settled can't change, so call this before it.
      */
-    suspend fun completeVerified(questId: Long, day: LocalDate): CompletionResult = db.withTransaction {
+    suspend fun verify(questId: Long, day: LocalDate, check: AutoCheck, performance: Double, detail: String): CompletionResult = db.withTransaction {
         val quest = quests.get(questId)?.let(QuestMapper::toDomain)
             ?: return@withTransaction CompletionResult.NotFound
-        if (quest.input is CompletionInput.Number) return@withTransaction CompletionResult.NotDue
-        complete(quest, day, null)
+        val lastClosed = meta.get(LAST_CLOSED_DAY_KEY)?.toLong()
+        if (lastClosed != null && day.toEpochDay() <= lastClosed) return@withTransaction CompletionResult.Closed
+        if (!quest.schedule.isDueOn(day)) return@withTransaction CompletionResult.NotDue
+        val existing = completions.get(questId, day.toEpochDay())
+        if (existing != null && existing.performance == null) return@withTransaction CompletionResult.AlreadyDone
+        if (existing != null && existing.performance == performance) return@withTransaction CompletionResult.AlreadyDone
+
+        val now = clock.millis()
+        val failed = Performance.isFail(performance)
+        // A fail that matches the last verdict (a gym session still under the bar) isn't news.
+        val lastCheck = tracking.lastAutoCheck(questId, day.toEpochDay())
+        if (existing == null && failed && lastCheck?.performance == performance) return@withTransaction CompletionResult.Failed(performance)
+        val result = when {
+            existing == null && failed -> CompletionResult.Failed(performance)
+            existing == null -> complete(quest, day, null, performance)
+            else -> {
+                // Move the XP already granted to what the new verdict is worth.
+                val granted = xp.forCompletion(existing.id).groupBy { Stat.fromKey(it.stat) }.mapValues { (_, e) -> e.sumOf { it.delta } }
+                val wanted = if (failed) emptyMap() else XpRules.scoredDeltas(quest, performance)
+                val diff = (granted.keys + wanted.keys).associateWith { (wanted[it] ?: 0) - (granted[it] ?: 0) }.filterValues { it != 0 }
+                val changes = XpRules.apply(xp.totals().toTotals(), diff)
+                xp.insertAll(
+                    diff.map { (stat, delta) ->
+                        XpEventEntity(
+                            stat = stat.key,
+                            delta = delta,
+                            reason = XpReason.RESCORE,
+                            questId = questId,
+                            // A dropped completion's events are detached like an undo's.
+                            completionId = if (failed) null else existing.id,
+                            epochDay = day.toEpochDay(),
+                            createdAtMillis = now,
+                        )
+                    },
+                )
+                if (failed) {
+                    completions.delete(existing.id)
+                    CompletionResult.Failed(performance)
+                } else {
+                    completions.setPerformance(existing.id, performance)
+                    CompletionResult.Rescored(changes, performance)
+                }
+            }
+        }
+        tracking.insertAutoCheck(
+            AutoCheckEntity(
+                epochDay = day.toEpochDay(),
+                questId = questId,
+                kind = check.name,
+                performance = performance,
+                detail = detail,
+                xp = if (failed) 0 else XpRules.scoredDeltas(quest, performance).values.sum(),
+                atMillis = now,
+            ),
+        )
+        result
     }
 
     /** Due daily quests on [day] that existed by then, done or not. */
@@ -205,12 +305,16 @@ class LifeRepository(
 
     /** XP that isn't tied to a quest, such as staying within the screen-time budget. */
     suspend fun grantBonus(stat: Stat, xpAmount: Int, day: LocalDate, reason: String): List<StatChange> = db.withTransaction {
-        val changes = XpRules.apply(xp.totals().toTotals(), mapOf(stat to xpAmount))
+        val totals = xp.totals().toTotals()
+        // A loss (a day far over the screen-time budget) never takes a level.
+        val delta = XpRules.settle(totals[stat] ?: 0, xpAmount)
+        if (delta == 0) return@withTransaction emptyList()
+        val changes = XpRules.apply(totals, mapOf(stat to delta))
         xp.insertAll(
             listOf(
                 XpEventEntity(
                     stat = stat.key,
-                    delta = xpAmount,
+                    delta = delta,
                     reason = reason,
                     questId = null,
                     completionId = null,
@@ -222,7 +326,7 @@ class LifeRepository(
         changes
     }
 
-    private suspend fun complete(quest: Quest, day: LocalDate, value: Double?): CompletionResult {
+    private suspend fun complete(quest: Quest, day: LocalDate, value: Double?, performance: Double?): CompletionResult {
         val questId = quest.id
         val now = clock.instant()
         if (!quest.schedule.isDueOn(day)) return CompletionResult.NotDue
@@ -238,10 +342,14 @@ class LifeRepository(
                 epochDay = day.toEpochDay(),
                 completedAtMillis = now.toEpochMilli(),
                 value = value,
+                performance = performance,
             ),
         )
-        val deltas = XpRules.completionDeltas(quest)
-        val changes = XpRules.apply(xp.totals().toTotals(), deltas)
+        val totals = xp.totals().toTotals()
+        val deltas = (performance?.let { XpRules.scoredDeltas(quest, it) } ?: XpRules.completionDeltas(quest))
+            .mapValues { (stat, delta) -> XpRules.settle(totals[stat] ?: 0, delta) }
+            .filterValues { it != 0 }
+        val changes = XpRules.apply(totals, deltas)
         xp.insertAll(
             deltas.map { (stat, delta) ->
                 XpEventEntity(
@@ -255,7 +363,7 @@ class LifeRepository(
                 )
             },
         )
-        return CompletionResult.Completed(changes)
+        return CompletionResult.Completed(changes, performance)
     }
 
     /**
@@ -265,6 +373,8 @@ class LifeRepository(
      */
     suspend fun undoCompletion(questId: Long): List<StatChange>? = db.withTransaction {
         val quest = quests.get(questId)?.let(QuestMapper::toDomain) ?: return@withTransaction null
+        // The System's own verdicts aren't taps to take back.
+        if (checkOf(quest) != null) return@withTransaction null
         val day = today()
         val completion = when (quest.schedule) {
             is Schedule.OneTime -> completions.latest(questId)?.takeIf { it.epochDay == day.toEpochDay() }
@@ -412,5 +522,6 @@ class LifeRepository(
         const val LAST_CLOSED_DAY_KEY = "last_closed_quest_day"
         const val TEST_DAY_KEY = "test_day_quest"
         const val STREAK_KEY = "streak"
+        const val GYM_LINKED_KEY = "gym_linked"
     }
 }

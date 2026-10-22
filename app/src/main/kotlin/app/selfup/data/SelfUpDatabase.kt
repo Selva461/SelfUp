@@ -23,6 +23,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AppUsageDayEntity::class,
         PhoneDayEntity::class,
         FocusEventEntity::class,
+        AutoCheckEntity::class,
+        GymSessionScoreEntity::class,
+        WorkLogEntity::class,
     ],
     version = SelfUpDatabase.VERSION,
     exportSchema = true,
@@ -38,9 +41,10 @@ abstract class SelfUpDatabase : RoomDatabase() {
     abstract fun mindDao(): MindDao
     abstract fun goalDao(): GoalDao
     abstract fun trackingDao(): TrackingDao
+    abstract fun workDao(): WorkDao
 
     companion object {
-        const val VERSION = 9
+        const val VERSION = 10
         const val NAME = "selfup.db"
 
         fun create(context: Context): SelfUpDatabase =
@@ -131,6 +135,36 @@ abstract class SelfUpDatabase : RoomDatabase() {
                             "`questId` INTEGER, `minutesUsed` INTEGER)",
                     )
                     db.execSQL("CREATE INDEX IF NOT EXISTS `index_focus_event_epochDay` ON `focus_event` (`epochDay`)")
+                }
+            },
+            object : Migration(9, 10) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("ALTER TABLE `completion` ADD COLUMN `performance` REAL")
+                    db.execSQL("ALTER TABLE `meal_log` ADD COLUMN `quality` TEXT")
+                    db.execSQL("ALTER TABLE `mind_score` ADD COLUMN `correct` INTEGER")
+                    db.execSQL("ALTER TABLE `mind_score` ADD COLUMN `attempts` INTEGER")
+                    db.execSQL("ALTER TABLE `mind_score` ADD COLUMN `performance` REAL")
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `auto_check` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                            "`epochDay` INTEGER NOT NULL, `questId` INTEGER NOT NULL, `kind` TEXT NOT NULL, " +
+                            "`performance` REAL NOT NULL, `detail` TEXT NOT NULL, `xp` INTEGER NOT NULL, `atMillis` INTEGER NOT NULL)",
+                    )
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_auto_check_epochDay` ON `auto_check` (`epochDay`)")
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `gym_session_score` (`sessionId` INTEGER NOT NULL, `epochDay` INTEGER NOT NULL, " +
+                            "`startMillis` INTEGER NOT NULL, `endMillis` INTEGER NOT NULL, `sets` INTEGER NOT NULL, " +
+                            "`volumeKg` REAL NOT NULL, `comparedTo` INTEGER, `setsPart` REAL NOT NULL, `volumePart` REAL NOT NULL, " +
+                            "`strengthPart` REAL NOT NULL, `performance` REAL NOT NULL, `scoredAtMillis` INTEGER NOT NULL, " +
+                            "PRIMARY KEY(`sessionId`))",
+                    )
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `work_log` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                            "`fingerprint` TEXT NOT NULL, `title` TEXT NOT NULL, `stat` TEXT NOT NULL, `difficulty` INTEGER NOT NULL, " +
+                            "`quality` INTEGER NOT NULL, `completeness` INTEGER NOT NULL, `ownership` INTEGER NOT NULL, `hours` REAL, " +
+                            "`judge` TEXT NOT NULL, `note` TEXT NOT NULL, `performance` REAL NOT NULL, `xpAwarded` INTEGER NOT NULL, " +
+                            "`epochDay` INTEGER NOT NULL, `atMillis` INTEGER NOT NULL, `code` TEXT NOT NULL)",
+                    )
+                    db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_work_log_fingerprint` ON `work_log` (`fingerprint`)")
                 }
             },
         )

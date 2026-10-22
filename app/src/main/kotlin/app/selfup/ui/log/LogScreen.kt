@@ -30,9 +30,13 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import app.selfup.core.DayBoundary
+import app.selfup.core.FoodQuality
 import app.selfup.core.HealthDay
 import app.selfup.core.HealthLog
 import app.selfup.core.Stat
+import app.selfup.core.WorkCode
+import app.selfup.core.WorkJudge
+import app.selfup.data.WorkLogEntity
 import app.selfup.ui.components.GroupHeader
 import app.selfup.ui.components.GroupSeparator
 import app.selfup.ui.components.LargeTitle
@@ -43,6 +47,7 @@ import app.selfup.ui.components.SystemDialog
 import app.selfup.ui.components.SystemGroup
 import app.selfup.ui.components.SystemTextButton
 import app.selfup.ui.system.systemPanel
+import app.selfup.ui.theme.SystemColors
 import app.selfup.ui.theme.color
 import app.selfup.ui.theme.colorLight
 import java.time.LocalDate
@@ -58,17 +63,23 @@ fun LogScreen(
     state: LogState,
     boundary: DayBoundary,
     contentPadding: PaddingValues,
-    onMeal: (String) -> Unit,
+    onMeal: (String, FoodQuality?) -> Unit,
     onShare: () -> Unit,
     onBackup: () -> Unit = {},
     onRestore: () -> Unit = {},
+    onMealQuality: (Long, FoodQuality) -> Unit = { _, _ -> },
+    canJudge: Boolean = false,
+    judging: Boolean = false,
+    onWorkCode: (String) -> Unit = {},
+    onJudge: (String) -> Unit = {},
 ) {
     var typingFood by remember { mutableStateOf(false) }
     var confirmRestore by remember { mutableStateOf(false) }
+    var addingWork by remember { mutableStateOf<WorkJudge?>(null) }
     val haptics = LocalHapticFeedback.current
-    val logMeal: (String) -> Unit = {
+    val logMeal: (String, FoodQuality?) -> Unit = { food, quality ->
         haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-        onMeal(it)
+        onMeal(food, quality)
     }
 
     LazyColumn(
@@ -86,7 +97,7 @@ fun LogScreen(
         item(key = "meal-header") { GroupHeader("Ate just now") }
         item(key = "meals") {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                state.quickFoods.forEach { food -> SystemChip(food, onClick = { logMeal(food) }) }
+                state.quickFoods.forEach { food -> SystemChip(food, onClick = { logMeal(food, null) }) }
                 SystemChip("Other…", onClick = { typingFood = true }, accent = MaterialTheme.colorScheme.primary)
             }
         }
@@ -103,7 +114,33 @@ fun LogScreen(
             SystemGroup {
                 state.days.forEachIndexed { i, day ->
                     if (i > 0) GroupSeparator(start = 16.dp)
-                    DayRow(day, boundary)
+                    DayRow(day, boundary, onMealQuality)
+                }
+            }
+        }
+        item(key = "quality-hint") {
+            Muted("Tap a meal to mark it clean, OK or junk. Meal XP follows what you ate, not that you logged it.", Modifier.padding(start = 6.dp))
+        }
+
+        item(key = "work-header") { GroupHeader("Built") }
+        item(key = "work") {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (state.works.isNotEmpty()) {
+                    SystemGroup {
+                        state.works.forEachIndexed { i, work ->
+                            if (i > 0) GroupSeparator(start = 16.dp)
+                            WorkRow(work)
+                        }
+                    }
+                }
+                Muted(
+                    "Built something with Claude? Ask Claude for a work code at the end and paste it here. " +
+                        "Claude scores quality, completeness and how much was your own work; full XP is rare.",
+                    Modifier.padding(start = 6.dp),
+                )
+                SystemButton("Paste a work code", onClick = { addingWork = WorkJudge.CLAUDE })
+                if (canJudge) {
+                    SystemButton(if (judging) "Groq is judging…" else "Describe it to Groq", onClick = { if (!judging) addingWork = WorkJudge.GROQ }, filled = false)
                 }
             }
         }
@@ -134,19 +171,76 @@ fun LogScreen(
 
     if (typingFood) {
         var text by remember { mutableStateOf("") }
+        var picked by remember { mutableStateOf<FoodQuality?>(null) }
+        val quality = picked ?: state.qualityOf(text)
         SystemDialog(
             title = "Meal",
             onDismiss = { typingFood = false },
             confirmText = "Log",
             onConfirm = {
-                logMeal(text.trim())
+                logMeal(text.trim(), quality)
                 typingFood = false
             },
             confirmEnabled = text.isNotBlank(),
         ) {
             Text("What did you eat?", style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FoodQuality.entries.forEach { q ->
+                    SystemChip(q.displayName, onClick = { picked = q }, accent = if (q == quality) q.color else null)
+                }
+            }
         }
+    }
+
+    addingWork?.let { judge ->
+        var text by remember(judge) { mutableStateOf("") }
+        val groq = judge == WorkJudge.GROQ
+        SystemDialog(
+            title = if (groq) "Describe it" else "Work code",
+            onDismiss = { addingWork = null },
+            confirmText = if (groq) "Judge" else "Add",
+            onConfirm = {
+                if (groq) onJudge(text) else onWorkCode(text)
+                addingWork = null
+            },
+            confirmEnabled = text.isNotBlank(),
+        ) {
+            Text(
+                if (groq) {
+                    "What you built, what works, and which parts you did yourself. Groq only reads this, so its score is capped below full."
+                } else {
+                    "Paste the block that starts with ${WorkCode.HEADER}."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            OutlinedTextField(value = text, onValueChange = { text = it }, minLines = 4, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+private val FoodQuality.color
+    get() = when (this) {
+        FoodQuality.CLEAN -> SystemColors.Success
+        FoodQuality.OK -> SystemColors.Gold
+        FoodQuality.JUNK -> SystemColors.Danger
+    }
+
+@Composable
+private fun WorkRow(work: WorkLogEntity) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            Text(work.title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f), maxLines = 2)
+            Text(
+                if (work.xpAwarded >= 0) "+${work.xpAwarded} XP" else "−${-work.xpAwarded} XP",
+                style = MaterialTheme.typography.labelLarge,
+                color = if (work.xpAwarded > 0) SystemColors.Blue else SystemColors.Danger,
+            )
+        }
+        Muted(
+            "Q${work.quality} · done ${work.completeness} · yours ${work.ownership} · ${(work.performance * 100).roundToInt()}% · " +
+                (WorkJudge.fromKey(work.judge)?.displayName ?: work.judge),
+        )
     }
 }
 
@@ -155,7 +249,7 @@ private val dayFormat = DateTimeFormatter.ofPattern("EEE d MMM")
 private val chartDayFormat = DateTimeFormatter.ofPattern("d MMM")
 
 @Composable
-private fun DayRow(day: HealthDay, boundary: DayBoundary) {
+private fun DayRow(day: HealthDay, boundary: DayBoundary, onMealQuality: (Long, FoodQuality) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
         Row(Modifier.fillMaxWidth()) {
             Text(day.day.format(dayFormat), style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
@@ -164,15 +258,20 @@ private fun DayRow(day: HealthDay, boundary: DayBoundary) {
         if (day.meals.isEmpty()) {
             Muted("No meals logged")
         } else {
-            Text(
-                day.meals.joinToString("   ") { meal ->
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                day.meals.forEach { meal ->
                     val time = meal.at.atZone(boundary.zone).toLocalTime().format(timeFormat)
-                    val late = if (HealthLog.isLateMeal(meal.at, Bedtime, boundary)) " (late)" else ""
-                    "$time ${meal.food}$late"
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+                    val late = if (HealthLog.isLateMeal(meal.at, Bedtime, boundary)) " · late" else ""
+                    SystemChip(
+                        "$time ${meal.food} · ${meal.quality.displayName}$late",
+                        onClick = {
+                            val next = FoodQuality.entries[(meal.quality.ordinal + 1) % FoodQuality.entries.size]
+                            onMealQuality(meal.id, next)
+                        },
+                        accent = meal.quality.color,
+                    )
+                }
+            }
         }
     }
 }

@@ -24,6 +24,31 @@ public object XpRules {
         split(completionXp(quest.difficulty), quest.stats)
 
     /**
+     * XP for a quest the System scored rather than took on trust: the full reward only at a
+     * performance of 1, scaled down below that (see [Performance]). A failing performance
+     * costs XP, all from the quest's first stat.
+     */
+    public fun scoredDeltas(quest: Quest, performance: Double): Map<Stat, Int> {
+        val total = Performance.xp(completionXp(quest.difficulty), performance)
+        return if (total >= 0) split(total, quest.stats) else mapOf(quest.stats.minBy { it.ordinal } to total)
+    }
+
+    /**
+     * The XP change for a poor result worth -[amount], clamped like a missed-quest penalty so
+     * it never takes a stat below the floor of its current level.
+     */
+    public fun lossDelta(currentTotalXp: Long, amount: Int): Int {
+        require(amount >= 0) { "A loss is given as a positive amount, was $amount" }
+        val floor = Leveling.floorXp(Leveling.levelFor(currentTotalXp))
+        val headroom = (currentTotalXp - floor).coerceAtLeast(0)
+        return -minOf(amount.toLong(), headroom).toInt()
+    }
+
+    /** [delta] as it should land on a stat at [currentTotalXp]: gains in full, losses clamped by [lossDelta]. */
+    public fun settle(currentTotalXp: Long, delta: Int): Int =
+        if (delta >= 0) delta else lossDelta(currentTotalXp, -delta)
+
+    /**
      * The (non-positive) XP change for missing a daily quest. It is clamped so the stat
      * never falls below the floor of its current level: penalties sting but never de-level.
      */

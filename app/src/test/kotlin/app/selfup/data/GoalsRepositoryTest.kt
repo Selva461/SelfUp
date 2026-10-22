@@ -9,6 +9,7 @@ import app.selfup.core.GoalMeasure
 import app.selfup.core.GoalStatus
 import app.selfup.core.Metric
 import app.selfup.core.MindGame
+import app.selfup.core.MindRun
 import app.selfup.core.PlanAction
 import app.selfup.core.PlanCode
 import app.selfup.core.PlanCodeResult
@@ -94,7 +95,7 @@ class GoalsRepositoryTest {
         assertEquals(GoalStatus.NEEDS_BASELINE, view.status)
         assertTrue(view.tasks.single().task.isTest)
 
-        mind.record(MindGame.DIGIT_SPAN, 6.0)
+        mind.record(MindGame.DIGIT_SPAN, MindRun(6.0))
         view = goals.observe().first().active.single()
         assertEquals(6.0, view.goal.baseline!!, 1e-9)
         assertTrue(view.tasks.single().done)

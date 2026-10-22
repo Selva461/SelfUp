@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import app.selfup.MainActivity
 import app.selfup.SelfUpApplication
+import app.selfup.core.AutoCheck
 import app.selfup.core.CompletionInput
 import app.selfup.core.Quest
 import app.selfup.core.ScreenTime
@@ -137,16 +138,24 @@ private fun Scrim(onDismiss: () -> Unit, content: @Composable () -> Unit) {
 @Composable
 private fun QuestPopup(app: SelfUpApplication, questId: Long, onClose: () -> Unit, onOpen: () -> Unit) {
     var quest by remember { mutableStateOf<Quest?>(null) }
+    var check by remember { mutableStateOf<AutoCheck?>(null) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(questId) {
         quest = withContext(Dispatchers.IO) { app.repository.getQuest(questId) }
+        quest?.let { q -> check = withContext(Dispatchers.IO) { app.repository.checkOf(q) } }
         if (quest == null) onClose()
     }
     val q = quest ?: return
     SystemWindow(title = "Quest Info", notice = true) {
         SystemLine("[Reminder]", color = SystemColors.Blue, style = MaterialTheme.typography.labelMedium)
         SystemLine(q.title, style = MaterialTheme.typography.titleLarge)
-        MutedText("${questSubtitle(q)} · +${XpRules.completionXp(q.difficulty)} XP")
+        MutedText(
+            if (check != null) {
+                "${questSubtitle(q)} · up to +${XpRules.completionXp(q.difficulty)} XP · checked from the ${check!!.source.lowercase()}"
+            } else {
+                "${questSubtitle(q)} · +${XpRules.completionXp(q.difficulty)} XP"
+            },
+        )
         SystemLine(
             "WARNING: Failing to complete the daily quest will bring a penalty.",
             color = SystemColors.Danger,
@@ -154,8 +163,8 @@ private fun QuestPopup(app: SelfUpApplication, questId: Long, onClose: () -> Uni
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SystemButton("Later", onClick = onClose, modifier = Modifier.weight(1f), filled = false, accent = SystemColors.TextMuted)
-            if (q.input is CompletionInput.Number) {
-                SystemButton("Log it", onClick = onOpen, modifier = Modifier.weight(1f))
+            if (q.input is CompletionInput.Number || check != null) {
+                SystemButton(if (check != null) "Open" else "Log it", onClick = onOpen, modifier = Modifier.weight(1f))
             } else {
                 SystemButton("Done", onClick = {
                     scope.launch {
