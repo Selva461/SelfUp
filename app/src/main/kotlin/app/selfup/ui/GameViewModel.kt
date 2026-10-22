@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import app.selfup.core.Quest
 import app.selfup.core.StatChange
 import app.selfup.core.StatProgress
+import app.selfup.core.StreakState
 import app.selfup.data.CompletionResult
 import app.selfup.data.DayCloseReport
 import app.selfup.data.DayQuest
@@ -26,6 +27,7 @@ data class TodayState(
     val day: LocalDate? = null,
     val stats: List<StatProgress> = emptyList(),
     val quests: List<DayQuest> = emptyList(),
+    val streak: StreakState = StreakState(),
 ) {
     val loaded: Boolean get() = day != null
     val overallLevel: Int get() = StatProgress.overallLevel(stats)
@@ -39,7 +41,7 @@ sealed interface GameEvent {
     /** One or more stats gained a level from a single completion. */
     data class LeveledUp(val changes: List<StatChange>) : GameEvent
 
-    /** Yesterday's misses were penalized and make-up quests added. */
+    /** Finished days were settled: misses penalized or shielded, or the streak broke. */
     data class DayClosed(val report: DayCloseReport) : GameEvent
 }
 
@@ -56,8 +58,8 @@ class GameViewModel(private val repository: LifeRepository) : ViewModel() {
             if (!report.isEmpty) _events.send(GameEvent.DayClosed(report))
         }
         .flatMapLatest { day ->
-            combine(repository.observeStats(), repository.observeDay(day)) { stats, quests ->
-                TodayState(day, stats, quests)
+            combine(repository.observeStats(), repository.observeDay(day), repository.observeStreak()) { stats, quests, streak ->
+                TodayState(day, stats, quests, streak)
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayState())

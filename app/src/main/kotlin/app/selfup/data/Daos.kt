@@ -109,6 +109,9 @@ interface MetaDao {
     @Query("SELECT value FROM app_meta WHERE `key` = :key")
     suspend fun get(key: String): String?
 
+    @Query("SELECT value FROM app_meta WHERE `key` = :key")
+    fun observe(key: String): Flow<String?>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun put(meta: MetaEntity)
 

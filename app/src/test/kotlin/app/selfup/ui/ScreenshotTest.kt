@@ -32,6 +32,7 @@ import app.selfup.core.MealEntry
 import app.selfup.core.Quest
 import app.selfup.core.Schedule
 import app.selfup.core.Stat
+import app.selfup.core.StreakState
 import app.selfup.core.StatChange
 import app.selfup.core.StatProgress
 import app.selfup.data.CompletionEntity
@@ -111,6 +112,7 @@ class ScreenshotTest {
         quests = quests.mapIndexed { i, q ->
             DayQuest(q, if (i < 2) CompletionEntity(i.toLong(), q.id, today.toEpochDay(), 0, null) else null)
         },
+        streak = StreakState(current = 9, best = 14, shields = 1),
     )
 
     private val tabs = listOf(

@@ -343,13 +343,21 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                     levelUp = event.changes
                 }
                 is GameEvent.DayClosed -> launch {
-                    haptics.performHapticFeedback(HapticFeedbackType.Reject)
-                    val count = event.report.missed.size
+                    val report = event.report
+                    val count = report.missed.size
                     val quests = if (count == 1) "1 daily quest" else "$count daily quests"
-                    snackbar.showSnackbar(
-                        "Penalty: missed $quests yesterday, −${event.report.xpLost} XP. Penalty quests added.",
-                        duration = SnackbarDuration.Long,
-                    )
+                    val lines = buildList {
+                        if (report.shieldsUsed > 0) {
+                            add(if (report.shieldsUsed == 1) "A shield blocked a missed day." else "${report.shieldsUsed} shields blocked missed days.")
+                        }
+                        if (count > 0) add("Penalty: missed $quests yesterday, −${report.xpLost} XP. Penalty quests added.")
+                        else if (report.xpLost > 0) add("Penalty: −${report.xpLost} XP for missed days.")
+                        if (report.streakLost > 1) add("${report.streakLost}-day streak lost.")
+                    }
+                    if (lines.isNotEmpty()) {
+                        haptics.performHapticFeedback(if (count > 0 || report.xpLost > 0) HapticFeedbackType.Reject else HapticFeedbackType.Confirm)
+                        snackbar.showSnackbar(lines.joinToString(" "), duration = SnackbarDuration.Long)
+                    }
                 }
                 is GameEvent.Completed -> launch {
                     haptics.performHapticFeedback(HapticFeedbackType.Confirm)
