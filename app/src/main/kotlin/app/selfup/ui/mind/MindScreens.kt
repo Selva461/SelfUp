@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
@@ -45,13 +44,14 @@ import app.selfup.core.Metric
 import app.selfup.core.MindGame
 import app.selfup.core.MindRules
 import app.selfup.data.MindRepository
-import app.selfup.ui.components.GlassGroup
 import app.selfup.ui.components.GroupHeader
 import app.selfup.ui.components.GroupSeparator
+import app.selfup.ui.components.PrimaryButton
+import app.selfup.ui.components.SystemGroup
+import app.selfup.ui.components.SystemWindow
+import app.selfup.ui.components.Tag
 import app.selfup.ui.components.pressScale
-import app.selfup.ui.glass.frosted
 import app.selfup.ui.records.Sparkline
-import app.selfup.ui.skills.PrimaryButton
 import app.selfup.ui.theme.SectionLabel
 
 /** The Mind section of the Skills tab: today's session, then every game with its best. */
@@ -59,7 +59,7 @@ fun LazyListScope.mindSection(state: MindState, onSession: () -> Unit, onGame: (
     item(key = "mind-h") { GroupHeader("Mind") }
     item(key = "mind-session") { MindSessionCard(state, onSession) }
     item(key = "mind-games") {
-        GlassGroup {
+        SystemGroup {
             state.summaries.forEachIndexed { i, summary ->
                 if (i > 0) GroupSeparator(start = 16.dp)
                 GameRow(summary.game, summary.best, summary.scores, summary.playedToday, onClick = { onGame(summary.game) })
@@ -70,14 +70,7 @@ fun LazyListScope.mindSection(state: MindState, onSession: () -> Unit, onGame: (
 
 @Composable
 private fun MindSessionCard(state: MindState, onStart: () -> Unit) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .frosted(tint = MindAccent.copy(alpha = 0.08f))
-            .padding(18.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text("TODAY · MIND", style = SectionLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    SystemWindow(title = "Daily training", accent = MindAccent) {
         Text(if (state.sessionDone) "Session done" else "10-minute session", style = MaterialTheme.typography.titleLarge)
         Text(
             state.sessionGames.joinToString(" · ") { it.displayName } +
@@ -104,7 +97,7 @@ private fun GameRow(game: MindGame, best: Double?, scores: List<Double>, playedT
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(game.displayName, style = MaterialTheme.typography.bodyLarge)
-                if (playedToday) Box(Modifier.size(6.dp).background(MindAccent, RoundedCornerShape(percent = 50)))
+                if (playedToday) Tag("Done today", MindAccent)
             }
             Text(game.trains, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -205,8 +198,8 @@ private fun SessionBar(done: Int, total: Int, modifier: Modifier) {
             Box(
                 Modifier
                     .weight(1f)
-                    .height(6.dp)
-                    .background(if (i < done) MindAccent else MindAccent.copy(alpha = 0.14f), RoundedCornerShape(percent = 50)),
+                    .height(4.dp)
+                    .background(if (i < done) MindAccent else MindAccent.copy(alpha = 0.14f)),
             )
         }
     }
@@ -218,7 +211,7 @@ private fun IntroStep(game: MindGame, state: MindState, onStart: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(game.trains.uppercase(), style = SectionLabel, color = MindAccent)
         Text(game.displayName, style = MaterialTheme.typography.headlineLarge)
-        GlassGroup {
+        SystemGroup {
             Text(MindFormat.howTo(game), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(16.dp))
             GroupSeparator(start = 16.dp)
             Row(Modifier.padding(16.dp)) {
@@ -250,16 +243,7 @@ private fun ResultStep(game: MindGame, score: Double, previousBest: Double?, xp:
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (xp > 0) {
-            Text(
-                "+$xp ${MindRepository.STAT.displayName}",
-                style = MaterialTheme.typography.labelLarge,
-                color = MindAccent,
-                modifier = Modifier
-                    .background(MindAccent.copy(alpha = 0.14f), RoundedCornerShape(percent = 50))
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-            )
-        }
+        if (xp > 0) Tag("+$xp XP · ${MindRepository.STAT.displayName}", MindAccent)
         Box(Modifier.weight(1f))
         PrimaryButton(if (isLast) "Finish" else "Next game", MindAccent, onContinue)
     }
@@ -268,8 +252,8 @@ private fun ResultStep(game: MindGame, score: Double, previousBest: Double?, xp:
 @Composable
 private fun DoneStep(results: List<Pair<MindGame, Double>>, onClose: () -> Unit) {
     Column(Modifier.fillMaxSize().padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Session done", style = MaterialTheme.typography.headlineLarge)
-        GlassGroup {
+        Text("SESSION COMPLETE", style = MaterialTheme.typography.headlineLarge)
+        if (results.isNotEmpty()) SystemGroup {
             results.forEachIndexed { i, (game, score) ->
                 if (i > 0) GroupSeparator(start = 16.dp)
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -44,12 +44,14 @@ import app.selfup.data.XpReason
 import app.selfup.core.MindGame
 import app.selfup.gym.GymStatus
 import app.selfup.ui.components.LevelUpOverlay
-import app.selfup.ui.glass.AmbientBackground
-import app.selfup.ui.glass.GlassLayers
-import app.selfup.ui.glass.GlassTab
-import app.selfup.ui.glass.GlassTabBar
-import app.selfup.ui.glass.GlassTabBarHeight
-import app.selfup.ui.glass.LocalGlassLayers
+import app.selfup.ui.components.NumberEntryDialog
+import app.selfup.ui.quests.QuestEditorSheet
+import app.selfup.ui.system.SystemBackground
+import app.selfup.ui.system.BlurLayers
+import app.selfup.ui.system.SystemTab
+import app.selfup.ui.system.SystemTabBar
+import app.selfup.ui.system.SystemTabBarHeight
+import app.selfup.ui.system.LocalBlurLayers
 import app.selfup.ui.goals.GoalsScreen
 import app.selfup.ui.goals.planSection
 import app.selfup.ui.home.HomeScreen
@@ -115,14 +117,14 @@ class ScreenshotTest {
     )
 
     private val tabs = listOf(
-        GlassTab("home", "Today", Icons.Filled.Home),
-        GlassTab("quests", "Quests", Icons.AutoMirrored.Filled.List),
-        GlassTab("records", "Records", Icons.Filled.Star),
-        GlassTab("skills", "Skills", Icons.Filled.Build),
-        GlassTab("log", "Log", Icons.Filled.Edit),
+        SystemTab("home", "Today", Icons.Filled.Home),
+        SystemTab("quests", "Quests", Icons.AutoMirrored.Filled.List),
+        SystemTab("records", "Records", Icons.Filled.Star),
+        SystemTab("skills", "Skills", Icons.Filled.Build),
+        SystemTab("log", "Log", Icons.Filled.Edit),
     )
 
-    private val padding = PaddingValues(top = 32.dp, bottom = GlassTabBarHeight + 34.dp)
+    private val padding = PaddingValues(top = 32.dp, bottom = SystemTabBarHeight + 34.dp)
 
     @Test
     fun home() = shoot("01-home", tab = "home") {
@@ -187,14 +189,24 @@ class ScreenshotTest {
         LevelUpOverlay(listOf(StatChange(Stat.STRENGTH, 20, 4, 5)), onDismiss = {})
     }
 
-    private fun shoot(name: String, tab: String? = null, content: @Composable () -> Unit) {
+    @Test
+    fun questEditor() = shoot("09-quest-editor", popup = true) {
+        QuestEditorSheet(initial = quests[3], onSave = {}, onDelete = {}, onDismiss = {})
+    }
+
+    @Test
+    fun numberEntry() = shoot("10-number-entry", popup = true) {
+        NumberEntryDialog("Log today's spending", "₹", 240.0, onConfirm = {}, onDismiss = {})
+    }
+
+    private fun shoot(name: String, tab: String? = null, popup: Boolean = false, content: @Composable () -> Unit) {
         compose.mainClock.autoAdvance = false
         compose.setContent {
             SelfUpTheme {
-                val layers = remember { GlassLayers(backdrop = HazeState(), chrome = HazeState()) }
-                CompositionLocalProvider(LocalGlassLayers provides layers) {
+                val layers = remember { BlurLayers(backdrop = HazeState(), chrome = HazeState()) }
+                CompositionLocalProvider(LocalBlurLayers provides layers) {
                     Box(Modifier.fillMaxSize()) {
-                        AmbientBackground(
+                        SystemBackground(
                             Modifier
                                 .fillMaxSize()
                                 .hazeSource(layers.backdrop)
@@ -202,7 +214,7 @@ class ScreenshotTest {
                         )
                         Box(Modifier.fillMaxSize().hazeSource(layers.chrome, zIndex = 1f)) { content() }
                         if (tab != null) {
-                            GlassTabBar(
+                            SystemTabBar(
                                 tabs,
                                 selected = tab,
                                 onSelect = {},
@@ -218,8 +230,11 @@ class ScreenshotTest {
         }
         // Let entry animations and springs settle before capturing.
         compose.mainClock.advanceTimeBy(1_500)
-        val bitmap = compose.onAllNodes(isRoot())[0].captureToImage().asAndroidBitmap()
+        val roots = compose.onAllNodes(isRoot())
+        // Sheets and dialogs live in their own window; capture the topmost one.
+        val root = if (popup) roots[roots.fetchSemanticsNodes().size - 1] else roots[0]
+        val bitmap = root.captureToImage().asAndroidBitmap()
         val dir = File("build/screens").apply { mkdirs() }
-        File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        File(dir, "$name.jpg").outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 88, it) }
     }
 }

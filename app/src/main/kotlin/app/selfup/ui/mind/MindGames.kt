@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,17 +55,20 @@ import app.selfup.core.GridRecall
 import app.selfup.core.NBack
 import app.selfup.core.Reaction
 import app.selfup.core.SpeedMath
+import app.selfup.ui.components.PrimaryButton
 import app.selfup.ui.components.pressScale
-import app.selfup.ui.glass.frosted
-import app.selfup.ui.glass.hairline
-import app.selfup.ui.skills.PrimaryButton
+import app.selfup.ui.system.Glow
+import app.selfup.ui.system.PanelShape
+import app.selfup.ui.system.hairline
+import app.selfup.ui.system.systemPanel
 import app.selfup.ui.theme.SectionLabel
 import app.selfup.ui.theme.Surfaces
+import app.selfup.ui.theme.SystemColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-internal val Right = Color(0xFF5EE29A)
-internal val Wrong = Color(0xFFFF6A5E)
+internal val Right = SystemColors.Success
+internal val Wrong = SystemColors.Danger
 
 private val BigNumber = androidx.compose.ui.text.TextStyle(fontSize = 96.sp, fontWeight = FontWeight.Light, letterSpacing = (-2).sp)
 
@@ -88,8 +90,8 @@ private fun NumberPad(onDigit: (Int) -> Unit, onDelete: () -> Unit, enabled: Boo
                                 .weight(1f)
                                 .height(60.dp)
                                 .pressScale(interaction, 0.94f)
-                                .background(Surfaces.Fill, RoundedCornerShape(18.dp))
-                                .hairline(RoundedCornerShape(18.dp))
+                                .background(Surfaces.Fill, PanelShape)
+                                .hairline(PanelShape)
                                 .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button) {
                                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     if (key == -1) onDelete() else onDigit(key)
@@ -119,7 +121,7 @@ private fun GameStatus(left: String, right: String) {
 private fun MissDots(misses: Int, max: Int) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         repeat(max) { i ->
-            Box(Modifier.size(8.dp).background(if (i < misses) Wrong else Color.White.copy(alpha = 0.14f), RoundedCornerShape(percent = 50)))
+            Box(Modifier.size(8.dp).background(if (i < misses) Wrong else Color.White.copy(alpha = 0.14f), PanelShape))
         }
     }
 }
@@ -190,7 +192,7 @@ fun DigitSpanGame(accent: Color, onDone: (Double) -> Unit) {
                                 Modifier
                                     .width(28.dp)
                                     .height(44.dp)
-                                    .background(if (i == typed.size && phase == SpanPhase.Input) accent.copy(alpha = 0.16f) else Surfaces.Fill, RoundedCornerShape(10.dp)),
+                                    .background(if (i == typed.size && phase == SpanPhase.Input) accent.copy(alpha = 0.16f) else Surfaces.Fill, PanelShape),
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(typed.getOrNull(i)?.toString() ?: "", style = MaterialTheme.typography.titleLarge, color = color)
@@ -322,7 +324,7 @@ private fun NBackBlock(n: Int, accent: Color, onFinished: (Double) -> Unit) {
             Box(
                 Modifier
                     .size(180.dp)
-                    .frosted(RoundedCornerShape(40.dp), tint = (feedback ?: accent).copy(alpha = if (feedback != null) 0.16f else 0.06f)),
+                    .systemPanel(accent = feedback ?: accent, glow = if (feedback != null) Glow.Full else Glow.Soft),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(if (visible && trial >= 0) "${seq[trial]}" else "", style = BigNumber, color = MaterialTheme.colorScheme.onSurface)
@@ -404,20 +406,20 @@ fun SpeedMathGame(accent: Color, onDone: (Double) -> Unit) {
             Modifier
                 .fillMaxWidth()
                 .height(4.dp)
-                .background(accent.copy(alpha = 0.14f), RoundedCornerShape(percent = 50)),
+                .background(accent.copy(alpha = 0.14f), PanelShape),
         ) {
             Box(
                 Modifier
                     .fillMaxWidth(remainingMs / (SpeedMath.SECONDS * 1_000f))
                     .height(4.dp)
-                    .background(accent, RoundedCornerShape(percent = 50)),
+                    .background(accent, PanelShape),
             )
         }
         Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .border(2.dp, ringColor, RoundedCornerShape(28.dp))
+                    .border(2.dp, ringColor, PanelShape)
                     .padding(vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -518,8 +520,8 @@ fun GridRecallGame(accent: Color, onDone: (Double) -> Unit) {
                                 Modifier
                                     .weight(1f)
                                     .fillMaxSize()
-                                    .background(fill, RoundedCornerShape(14.dp))
-                                    .hairline(RoundedCornerShape(14.dp))
+                                    .background(fill, PanelShape)
+                                    .hairline(PanelShape)
                                     .clickable(enabled = phase == GridPhase.Tap && i !in tapped, role = Role.Button) {
                                         if (i in pattern) {
                                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -615,7 +617,7 @@ fun ReactionGame(accent: Color, onDone: (Double) -> Unit) {
                 .fillMaxWidth()
                 .weight(1f)
                 .padding(bottom = 16.dp)
-                .background(background, RoundedCornerShape(32.dp))
+                .background(background, PanelShape)
                 .pointerInput(Unit) { detectTapGestures(onPress = { tap() }) }
                 .semantics { contentDescription = "Reaction area" },
             contentAlignment = Alignment.Center,

@@ -93,14 +93,14 @@ import app.selfup.gym.GymSync
 import app.selfup.ui.components.CelebrationOverlay
 import app.selfup.ui.components.LevelUpOverlay
 import app.selfup.ui.components.NumberEntryDialog
-import app.selfup.ui.glass.AmbientBackground
-import app.selfup.ui.glass.GlassIconButton
-import app.selfup.ui.glass.GlassLayers
-import app.selfup.ui.glass.GlassSnackbar
-import app.selfup.ui.glass.GlassTab
-import app.selfup.ui.glass.GlassTabBar
-import app.selfup.ui.glass.GlassTabBarHeight
-import app.selfup.ui.glass.LocalGlassLayers
+import app.selfup.ui.system.SystemBackground
+import app.selfup.ui.system.SystemIconButton
+import app.selfup.ui.system.BlurLayers
+import app.selfup.ui.system.SystemSnackbar
+import app.selfup.ui.system.SystemTab
+import app.selfup.ui.system.SystemTabBar
+import app.selfup.ui.system.SystemTabBarHeight
+import app.selfup.ui.system.LocalBlurLayers
 import app.selfup.ui.goals.AddGoalSheet
 import app.selfup.ui.goals.AiPlanSheet
 import app.selfup.ui.goals.GoalsEvent
@@ -131,6 +131,7 @@ import app.selfup.ui.skills.SkillsScreen
 import app.selfup.ui.skills.SkillsViewModel
 import app.selfup.ui.stat.StatDetailScreen
 import app.selfup.ui.stat.StatDetailViewModel
+import app.selfup.ui.theme.SystemColors
 import app.selfup.ui.theme.color
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.hazeSource
@@ -138,11 +139,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 private val Tabs = listOf(
-    GlassTab(Routes.HOME, "Today", Icons.Filled.Home),
-    GlassTab(Routes.QUESTS, "Quests", Icons.AutoMirrored.Filled.List),
-    GlassTab(Routes.RECORDS, "Records", Icons.Filled.Star),
-    GlassTab(Routes.SKILLS, "Skills", Icons.Filled.Build),
-    GlassTab(Routes.LOG, "Log", Icons.Filled.Edit),
+    SystemTab(Routes.HOME, "Today", Icons.Filled.Home),
+    SystemTab(Routes.QUESTS, "Quests", Icons.AutoMirrored.Filled.List),
+    SystemTab(Routes.RECORDS, "Records", Icons.Filled.Star),
+    SystemTab(Routes.SKILLS, "Skills", Icons.Filled.Build),
+    SystemTab(Routes.LOG, "Log", Icons.Filled.Edit),
 )
 
 private object Routes {
@@ -241,7 +242,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
             when (event) {
                 is MindEvent.LeveledUp -> levelUp = event.changes
                 is MindEvent.Result -> if (event.result.xp > 0) {
-                    launch { snackbar.showSnackbar("+${event.result.xp} ${MindRepository.STAT.displayName}", duration = SnackbarDuration.Short) }
+                    launch { snackbar.showSnackbar("+${event.result.xp} XP · ${MindRepository.STAT.displayName}", duration = SnackbarDuration.Short) }
                 }
             }
         }
@@ -259,7 +260,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                     }
                     if (result.xp > 0) {
                         val stat = Packs.packOf(result.conceptId)?.stat
-                        launch { snackbar.showSnackbar("+${result.xp} ${stat?.displayName.orEmpty()}", duration = SnackbarDuration.Short) }
+                        launch { snackbar.showSnackbar("+${result.xp} XP" + (stat?.let { " · ${it.displayName}" } ?: ""), duration = SnackbarDuration.Short) }
                     }
                 }
             }
@@ -300,7 +301,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
             launch {
                 val count = result.added + result.updated
                 val text = when {
-                    best != null -> "New ${best.first.displayName} best from Gym  +${RecordMath.PR_XP} ${best.first.stat.displayName}"
+                    best != null -> "New ${best.first.displayName} best from Gym · +${RecordMath.PR_XP} XP ${best.first.stat.displayName}"
                     count == 1 -> "1 entry in from Gym"
                     count > 1 -> "$count entries in from Gym"
                     else -> null
@@ -322,7 +323,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                     }
                     launch {
                         val text = if (best != null) {
-                            "New ${event.kind.displayName} best  +${RecordMath.PR_XP} ${event.kind.stat.displayName}"
+                            "New ${event.kind.displayName} best · +${RecordMath.PR_XP} XP ${event.kind.stat.displayName}"
                         } else {
                             "Logged ${event.kind.displayName}"
                         }
@@ -346,13 +347,13 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                     val count = event.report.missed.size
                     val quests = if (count == 1) "1 daily quest" else "$count daily quests"
                     snackbar.showSnackbar(
-                        "Missed $quests yesterday: −${event.report.xpLost} XP. Make-up quests added.",
+                        "Penalty: missed $quests yesterday, −${event.report.xpLost} XP. Penalty quests added.",
                         duration = SnackbarDuration.Long,
                     )
                 }
                 is GameEvent.Completed -> launch {
                     haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                    val xp = event.changes.joinToString("  ") { "+${it.delta} ${it.stat.displayName}" }
+                    val xp = event.changes.joinToString(" · ") { "+${it.delta} XP ${it.stat.displayName}" }
                     val result = snackbar.showSnackbar(xp, actionLabel = "Undo", duration = SnackbarDuration.Short)
                     if (result == SnackbarResult.ActionPerformed) game.undo(event.quest.id)
                 }
@@ -369,13 +370,13 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
     }
     val edit: (Quest) -> Unit = { editing = Editing.Existing(it) }
 
-    val layers = remember { GlassLayers(backdrop = HazeState(), chrome = HazeState()) }
+    val layers = remember { BlurLayers(backdrop = HazeState(), chrome = HazeState()) }
     val onTab = route == Routes.HOME || route == Routes.QUESTS || route == Routes.RECORDS || route == Routes.SKILLS || route == Routes.LOG
 
-    CompositionLocalProvider(LocalGlassLayers provides layers) {
+    CompositionLocalProvider(LocalBlurLayers provides layers) {
         Box(Modifier.fillMaxSize()) {
             // The ambient light feeds both layers; the content feeds only the chrome layer, above it.
-            AmbientBackground(
+            SystemBackground(
                 Modifier
                     .fillMaxSize()
                     .hazeSource(layers.backdrop)
@@ -390,7 +391,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                 // Screens scroll under the floating bar, so they pad their last row clear of it.
                 val padding = PaddingValues(
                     top = scaffoldPadding.calculateTopPadding(),
-                    bottom = scaffoldPadding.calculateBottomPadding() + GlassTabBarHeight + 24.dp,
+                    bottom = scaffoldPadding.calculateBottomPadding() + SystemTabBarHeight + 24.dp,
                 )
                 NavHost(
                     nav,
@@ -587,14 +588,14 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                SnackbarHost(snackbar) { data -> GlassSnackbar(data) }
+                SnackbarHost(snackbar) { data -> SystemSnackbar(data) }
                 AnimatedVisibility(
                     visible = onTab,
                     enter = fadeIn() + slideInVertically { it / 2 },
                     exit = fadeOut() + slideOutVertically { it / 2 },
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        GlassTabBar(
+                        SystemTabBar(
                             tabs = Tabs,
                             selected = route,
                             onSelect = { nav.switchTab(it) },
@@ -605,7 +606,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                             enter = fadeIn() + scaleIn(spring(dampingRatio = 0.6f)),
                             exit = fadeOut() + scaleOut(),
                         ) {
-                            GlassIconButton(Icons.Filled.Add, contentDescription = "Add quest", onClick = { editing = Editing.New })
+                            SystemIconButton(Icons.Filled.Add, contentDescription = "Add quest", onClick = { editing = Editing.New })
                         }
                     }
                 }
@@ -614,11 +615,11 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
             newBest?.let { (kind, best) ->
                 val headline = RecordFormat.metric(best.metric, best.value)
                 CelebrationOverlay(
-                    label = "NEW RECORD",
+                    label = "New record",
                     headline = headline.substringBefore(' '),
                     message = "${kind.displayName} · ${best.metric.displayName.lowercase()} ${headline.substringAfter(' ', "")}\n" +
                         "was ${RecordFormat.metric(best.metric, best.previous)}",
-                    accent = kind.stat.color,
+                    accent = SystemColors.Gold,
                     key = best,
                     onDismiss = { newBest = null },
                 )
@@ -626,7 +627,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
             masteryUp?.let { result ->
                 val concept = Packs.concept(result.conceptId)
                 CelebrationOverlay(
-                    label = "MASTERY UP",
+                    label = "Mastery up",
                     headline = result.after.displayName,
                     message = "${concept?.title.orEmpty()}\n${result.after.howToEarn}: done",
                     accent = Packs.packOf(result.conceptId)?.stat?.color ?: Color.White,

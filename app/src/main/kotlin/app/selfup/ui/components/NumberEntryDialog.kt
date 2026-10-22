@@ -1,11 +1,11 @@
 package app.selfup.ui.components
 
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,6 +19,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
+import app.selfup.ui.theme.SystemColors
 
 /**
  * Number entry for a logging quest, built for the 10-second rule: the keyboard opens
@@ -39,25 +40,26 @@ fun NumberEntryDialog(
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            OutlinedTextField(
-                value = field,
-                onValueChange = { field = it },
-                singleLine = true,
-                prefix = { if (unit.isNotEmpty()) Text(unit) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { value?.let(onConfirm) }),
-                modifier = Modifier.focusRequester(focus),
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { value?.let(onConfirm) }, enabled = value != null) { Text("Log") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+    SystemDialog(
+        title = "Log",
+        onDismiss = onDismiss,
+        confirmText = "Log",
+        onConfirm = { value?.let(onConfirm) },
+        confirmEnabled = value != null,
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, color = SystemColors.Text)
+        OutlinedTextField(
+            value = field,
+            onValueChange = { field = it },
+            singleLine = true,
+            prefix = { if (unit.isNotEmpty()) Text(unit) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { value?.let(onConfirm) }),
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(focus),
+        )
+    }
 }
 
 private fun formatNumber(value: Double): String =

@@ -14,13 +14,11 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -39,11 +37,15 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import app.selfup.ai.PlanReply
 import app.selfup.core.ImportedGoal
-import app.selfup.ui.glass.hairline
-import app.selfup.ui.skills.PrimaryButton
+import app.selfup.ui.components.PrimaryButton
+import app.selfup.ui.components.SheetTitle
+import app.selfup.ui.components.SystemSheet
+import app.selfup.ui.system.PanelShape
+import app.selfup.ui.system.hairline
 import app.selfup.ui.theme.Surfaces
-import kotlinx.coroutines.launch
+import app.selfup.ui.theme.SystemColors
 import java.time.LocalDate
+import kotlinx.coroutines.launch
 
 private sealed interface AiStep {
     data object Ask : AiStep
@@ -75,12 +77,9 @@ fun AiPlanSheet(
     var request by remember { mutableStateOf("") }
     var step by remember { mutableStateOf<AiStep>(AiStep.Ask) }
 
-    ModalBottomSheet(
+    SystemSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        scrimColor = Color.Black.copy(alpha = 0.5f),
     ) {
         Column(
             Modifier
@@ -90,7 +89,7 @@ fun AiPlanSheet(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("Plan with AI", style = MaterialTheme.typography.headlineSmall)
+            SheetTitle("Plan with AI")
             if (!hasKey) {
                 Text(
                     "Planning runs on Groq, which has a free tier. Make a key at console.groq.com/keys and paste it here. " +
@@ -128,7 +127,7 @@ fun AiPlanSheet(
                             }
                             is AiStep.Done -> when (val reply = current.reply) {
                                 is PlanReply.Failed -> {
-                                    Text(reply.message, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFFF8A7A))
+                                    Text(reply.message, style = MaterialTheme.typography.bodyMedium, color = SystemColors.Danger)
                                     PrimaryButton("Try again", accent, { step = AiStep.Ask })
                                 }
                                 is PlanReply.Ok -> {
@@ -163,8 +162,8 @@ private fun Field(value: String, onChange: (String) -> Unit, placeholder: String
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = minHeight.dp)
-            .background(Surfaces.Fill, RoundedCornerShape(16.dp))
-            .hairline(RoundedCornerShape(16.dp))
+            .background(Surfaces.Fill, PanelShape)
+            .hairline(PanelShape)
             .padding(14.dp),
         decorationBox = { field ->
             if (value.isEmpty()) Text(placeholder, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -32,13 +32,14 @@ import app.selfup.core.RecordKind
 import app.selfup.core.Stat
 import app.selfup.data.RecordSummary
 import app.selfup.gym.GymStatus
-import app.selfup.ui.components.GlassChip
-import app.selfup.ui.components.GlassGroup
 import app.selfup.ui.components.GroupHeader
 import app.selfup.ui.components.GroupSeparator
 import app.selfup.ui.components.LargeTitle
+import app.selfup.ui.components.SystemChip
+import app.selfup.ui.components.SystemGroup
 import app.selfup.ui.components.pressScale
-import app.selfup.ui.glass.frosted
+import app.selfup.ui.system.Glow
+import app.selfup.ui.system.systemPanel
 import app.selfup.ui.theme.color
 import java.time.Duration
 import java.time.Instant
@@ -74,7 +75,7 @@ fun RecordsScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item(key = "title") { LargeTitle("Records") }
+        item(key = "title") { LargeTitle("Records", eyebrow = "Strength · body · running") }
         if (gym != GymStatus.NotInstalled) {
             item(key = "gym") {
                 GymCard(gym, imported = state.summaries.sumOf { s -> s.entries.count { it.imported } }, onConnect = onConnectGym)
@@ -84,7 +85,7 @@ fun RecordsScreen(
         groups.forEach { (name, kinds) ->
             item(key = "h-$name") { GroupHeader(name) }
             item(key = "g-$name") {
-                GlassGroup {
+                SystemGroup {
                     kinds.forEachIndexed { i, kind ->
                         if (i > 0) GroupSeparator(start = 16.dp)
                         RecordRow(kind, byKind[kind], onClick = { onOpen(kind) })
@@ -109,7 +110,7 @@ private fun TestDayCard(next: LocalDate?, tested: Int, total: Int) {
     Row(
         Modifier
             .fillMaxWidth()
-            .frosted()
+            .systemPanel(glow = Glow.Soft)
             .padding(18.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -117,7 +118,7 @@ private fun TestDayCard(next: LocalDate?, tested: Int, total: Int) {
             Text("NEXT TEST DAY", style = app.selfup.ui.theme.SectionLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(next?.format(testDayFormat) ?: "–", style = MaterialTheme.typography.titleLarge)
             Text(
-                "First Saturday of every month. Retest 3 records.",
+                "First Saturday of every month. Retest three records.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -138,7 +139,7 @@ private fun GymCard(status: GymStatus, imported: Int, onConnect: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .frosted()
+            .systemPanel(glow = Glow.Soft)
             .padding(18.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -177,8 +178,8 @@ private fun GymCard(status: GymStatus, imported: Int, onConnect: () -> Unit) {
             )
         }
         when (status) {
-            GymStatus.NeedsUpdate -> GlassChip("Update", onClick = onConnect, accent = MaterialTheme.colorScheme.primary)
-            is GymStatus.NeedsPermission -> GlassChip("Connect", onClick = onConnect, accent = MaterialTheme.colorScheme.primary)
+            GymStatus.NeedsUpdate -> SystemChip("Update", onClick = onConnect, accent = MaterialTheme.colorScheme.primary)
+            is GymStatus.NeedsPermission -> SystemChip("Connect", onClick = onConnect, accent = MaterialTheme.colorScheme.primary)
             else -> Unit
         }
     }

@@ -8,25 +8,22 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -45,6 +42,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.selfup.core.RecordEntry
@@ -52,18 +50,25 @@ import app.selfup.core.RecordInput
 import app.selfup.core.RecordKind
 import app.selfup.core.RecordMath
 import app.selfup.data.RecordSummary
-import app.selfup.ui.components.GlassGroup
 import app.selfup.ui.components.GroupHeader
 import app.selfup.ui.components.GroupSeparator
-import app.selfup.ui.glass.hairline
+import app.selfup.ui.components.SheetTitle
+import app.selfup.ui.components.SystemButton
+import app.selfup.ui.components.SystemGroup
+import app.selfup.ui.components.SystemSheet
+import app.selfup.ui.components.Tag
+import app.selfup.ui.system.PanelShape
+import app.selfup.ui.system.hairline
 import app.selfup.ui.theme.SectionLabel
 import app.selfup.ui.theme.Surfaces
+import app.selfup.ui.theme.SystemColors
 import app.selfup.ui.theme.color
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import app.selfup.ui.theme.glow
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private val entryDateFormat = DateTimeFormatter.ofPattern("EEE d MMM")
 
@@ -104,12 +109,9 @@ fun RecordLogSheet(
         scope.launch { sheetState.hide() }.invokeOnCompletion { then() }
     }
 
-    ModalBottomSheet(
+    SystemSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        scrimColor = Color.Black.copy(alpha = 0.5f),
     ) {
         Column(
             Modifier
@@ -118,7 +120,7 @@ fun RecordLogSheet(
                 .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(kind.displayName, style = MaterialTheme.typography.headlineSmall)
+            SheetTitle(kind.displayName)
 
             Preview(kind, draft, beats.isNotEmpty(), summary)
 
@@ -136,9 +138,9 @@ fun RecordLogSheet(
                 RecordInput.DISTANCE_TIME -> {
                     Stepper("Distance", "${RecordFormat.number(distance)} km", accent,
                         onMinus = { distance = tenths(distance - 0.1).coerceAtLeast(0.1) }, onPlus = { distance = tenths(distance + 0.1) })
-                    Stepper("Time · minutes", RecordFormat.duration(seconds), accent,
+                    Stepper("Time · 1 min steps", RecordFormat.duration(seconds), accent,
                         onMinus = { seconds = (seconds - 60).coerceAtLeast(60) }, onPlus = { seconds += 60 })
-                    Stepper("Time · seconds", RecordFormat.duration(seconds), accent,
+                    Stepper("Time · 5 s steps", RecordFormat.duration(seconds), accent,
                         onMinus = { seconds = (seconds - 5).coerceAtLeast(5) }, onPlus = { seconds += 5 })
                 }
                 RecordInput.WEIGHT -> Stepper("Weight", "${RecordFormat.number(weight)} kg", accent,
@@ -161,7 +163,7 @@ fun RecordLogSheet(
             if (recent.isNotEmpty()) {
                 Column {
                     GroupHeader("Recent")
-                    GlassGroup(Modifier.padding(top = 6.dp)) {
+                    SystemGroup(Modifier.padding(top = 6.dp)) {
                         recent.forEachIndexed { i, logged ->
                             if (i > 0) GroupSeparator(start = 16.dp)
                             Row(
@@ -215,7 +217,7 @@ private fun Preview(kind: RecordKind, draft: RecordEntry?, isBest: Boolean, summ
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(headline.displayName.uppercase(), style = SectionLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value?.let { RecordFormat.metric(headline, it) } ?: "–", style = MaterialTheme.typography.displayMedium, color = kind.stat.color)
+            Text(value?.let { RecordFormat.metric(headline, it) } ?: "–", style = MaterialTheme.typography.displayMedium.copy(shadow = glow(kind.stat.color, 20f)), color = SystemColors.Text)
             val context = when {
                 best != null -> "Best ${RecordFormat.metric(headline, best)}"
                 summary?.entries.isNullOrEmpty() -> "Your first entry sets the baseline"
@@ -224,14 +226,7 @@ private fun Preview(kind: RecordKind, draft: RecordEntry?, isBest: Boolean, summ
             context?.let { Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         AnimatedVisibility(isBest, enter = scaleIn() + fadeIn(), exit = scaleOut() + fadeOut()) {
-            Text(
-                "NEW BEST",
-                style = SectionLabel,
-                color = Color.Black,
-                modifier = Modifier
-                    .background(kind.stat.color, RoundedCornerShape(percent = 50))
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-            )
+            Tag("New best", SystemColors.Gold)
         }
     }
 }
@@ -242,8 +237,8 @@ internal fun Stepper(label: String, value: String, accent: Color, onMinus: () ->
     Row(
         Modifier
             .fillMaxWidth()
-            .background(Surfaces.Fill, RoundedCornerShape(18.dp))
-            .hairline(RoundedCornerShape(18.dp))
+            .background(Surfaces.Fill, PanelShape)
+            .hairline(PanelShape)
             .padding(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -264,8 +259,12 @@ private fun StepButton(symbol: String, description: String, accent: Color, onSte
     Box(
         Modifier
             .size(52.dp)
-            .background(accent.copy(alpha = 0.14f), RoundedCornerShape(14.dp))
-            .semantics { contentDescription = description }
+            .background(accent.copy(alpha = 0.12f), PanelShape)
+            .border(1.dp, accent.copy(alpha = 0.5f), PanelShape)
+            .semantics {
+                contentDescription = description
+                role = Role.Button
+            }
             .pointerInput(Unit) {
                 detectTapGestures(
                     onPress = {
@@ -295,17 +294,13 @@ private fun StepButton(symbol: String, description: String, accent: Color, onSte
 @Composable
 private fun SaveButton(enabled: Boolean, accent: Color, onClick: () -> Unit) {
     val haptics = LocalHapticFeedback.current
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .height(54.dp)
-            .background(if (enabled) accent else accent.copy(alpha = 0.3f), RoundedCornerShape(percent = 50))
-            .clickable(enabled = enabled, role = Role.Button) {
-                haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                onClick()
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Text("Save", style = MaterialTheme.typography.titleMedium, color = Color.Black)
-    }
+    SystemButton(
+        "Save",
+        onClick = {
+            haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+            onClick()
+        },
+        accent = accent,
+        enabled = enabled,
+    )
 }

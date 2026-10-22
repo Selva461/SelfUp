@@ -40,16 +40,16 @@ jobs:
       # Screens rendered by ScreenshotTest. Also printed to the log as base64 between markers,
       # so they can be reviewed from the job log alone.
       - name: Upload UI screenshots
-        if: always() && hashFiles('app/build/screens/*.png') != ''
+        if: always() && hashFiles('app/build/screens/*.jpg') != ''
         uses: actions/upload-artifact@v4
         with:
           name: ui-screens
-          path: app/build/screens/*.png
+          path: app/build/screens/*.jpg
 
       - name: Print UI screenshots
-        if: always() && hashFiles('app/build/screens/*.png') != ''
+        if: always() && hashFiles('app/build/screens/*.jpg') != ''
         run: |
-          for f in app/build/screens/*.png; do
+          for f in app/build/screens/*.jpg; do
             echo "=====SCREEN $(basename "$f")"
             base64 -w 0 "$f"
             echo

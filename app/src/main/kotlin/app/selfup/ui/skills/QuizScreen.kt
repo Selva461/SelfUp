@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -50,15 +49,20 @@ import androidx.compose.ui.unit.sp
 import app.selfup.core.Concept
 import app.selfup.core.Question
 import app.selfup.core.SkillRules
-import app.selfup.ui.components.GlassGroup
 import app.selfup.ui.components.GroupSeparator
-import app.selfup.ui.glass.frosted
-import app.selfup.ui.glass.hairline
+import app.selfup.ui.components.PrimaryButton
+import app.selfup.ui.components.SystemDial
+import app.selfup.ui.components.SystemGroup
+import app.selfup.ui.system.Glow
+import app.selfup.ui.system.PanelShape
+import app.selfup.ui.system.hairline
+import app.selfup.ui.system.systemPanel
 import app.selfup.ui.theme.SectionLabel
 import app.selfup.ui.theme.Surfaces
+import app.selfup.ui.theme.SystemColors
 
-private val Right = Color(0xFF5EE29A)
-private val Wrong = Color(0xFFFF6A5E)
+private val Right = SystemColors.Success
+private val Wrong = SystemColors.Danger
 
 /** A question as shown: options shuffled, with the correct one's new position. */
 private data class Shown(val question: Question, val options: List<String>, val answer: Int)
@@ -168,14 +172,14 @@ private fun SessionProgress(concepts: Int, index: Int, step: Step, accent: Color
     Box(
         modifier
             .padding(end = 12.dp)
-            .height(6.dp)
-            .background(accent.copy(alpha = 0.14f), RoundedCornerShape(percent = 50)),
+            .height(4.dp)
+            .background(accent.copy(alpha = 0.14f)),
     ) {
         Box(
             Modifier
                 .fillMaxWidth(if (step == Step.Done) 1f else total)
-                .height(6.dp)
-                .background(accent, RoundedCornerShape(percent = 50)),
+                .height(4.dp)
+                .background(accent),
         )
     }
 }
@@ -191,7 +195,7 @@ private fun CardStep(concept: Concept, accent: Color, onContinue: () -> Unit) {
     ) {
         Text("NEW CONCEPT", style = SectionLabel, color = accent)
         Text(concept.title, style = MaterialTheme.typography.headlineLarge)
-        GlassGroup {
+        SystemGroup {
             concept.card.forEachIndexed { i, line ->
                 if (i > 0) GroupSeparator(start = 16.dp)
                 Text(line, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(16.dp))
@@ -235,7 +239,7 @@ private fun AskStep(shown: Shown, number: Int, accent: Color, onAnswered: (Boole
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .frosted(tint = (if (p == shown.answer) Right else Wrong).copy(alpha = 0.08f))
+                    .systemPanel(accent = if (p == shown.answer) Right else Wrong, glow = Glow.Soft)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -251,7 +255,7 @@ private enum class OptionState { Open, Right, Wrong, Dim }
 
 @Composable
 private fun OptionRow(text: String, state: OptionState, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = PanelShape
     val fill by animateColorAsState(
         when (state) {
             OptionState.Right -> Right.copy(alpha = 0.16f)
@@ -289,8 +293,8 @@ private fun CodeBlock(code: String) {
         softWrap = false,
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF0B0D14), RoundedCornerShape(14.dp))
-            .hairline(RoundedCornerShape(14.dp))
+            .background(Color(0xFF030A14), PanelShape)
+            .hairline(PanelShape)
             .horizontalScroll(rememberScrollState())
             .padding(14.dp),
     )
@@ -313,7 +317,7 @@ private fun ScoreStep(concept: Concept, correct: Int, accent: Color, isLast: Boo
     ) {
         Text(concept.title.uppercase(), style = SectionLabel, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Box(contentAlignment = Alignment.Center) {
-            ProgressRing(fraction.toFloat(), if (fraction >= SkillRules.PASS) accent else Wrong, size = 160.dp, stroke = 14.dp)
+            SystemDial(fraction.toFloat(), if (fraction >= SkillRules.PASS) accent else Wrong, size = 160.dp, stroke = 14.dp)
             Text("$correct/${SkillRules.QUIZ_LENGTH}", style = MaterialTheme.typography.displayMedium)
         }
         Text(verdict, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -330,8 +334,8 @@ private fun DoneStep(results: List<Pair<Concept, Int>>, accent: Color, onClose: 
             .padding(top = 24.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Session done", style = MaterialTheme.typography.headlineLarge)
-        GlassGroup {
+        Text("SESSION COMPLETE", style = MaterialTheme.typography.headlineLarge)
+        if (results.isNotEmpty()) SystemGroup {
             results.forEachIndexed { i, (concept, correct) ->
                 if (i > 0) GroupSeparator(start = 16.dp)
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

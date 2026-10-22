@@ -16,12 +16,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,7 +26,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -45,13 +41,18 @@ import app.selfup.core.GasLevels
 import app.selfup.core.HealthDay
 import app.selfup.core.HealthLog
 import app.selfup.core.Stat
-import app.selfup.ui.components.GlassChip
-import app.selfup.ui.components.GlassGroup
 import app.selfup.ui.components.GroupHeader
 import app.selfup.ui.components.GroupSeparator
 import app.selfup.ui.components.LargeTitle
+import app.selfup.ui.components.MutedText
+import app.selfup.ui.components.SystemChip
+import app.selfup.ui.components.SystemDialog
+import app.selfup.ui.components.SystemGroup
+import app.selfup.ui.components.SystemTextButton
 import app.selfup.ui.components.pressScale
-import app.selfup.ui.glass.frosted
+import app.selfup.ui.system.Glow
+import app.selfup.ui.system.PanelShape
+import app.selfup.ui.system.systemPanel
 import app.selfup.ui.theme.color
 import app.selfup.ui.theme.colorLight
 import java.time.LocalDate
@@ -90,13 +91,13 @@ fun LogScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item(key = "title") { LargeTitle("Log") }
+        item(key = "title") { LargeTitle("Log", eyebrow = "Food, gas and spending") }
 
         item(key = "meal-header") { GroupHeader("Ate just now") }
         item(key = "meals") {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                state.quickFoods.forEach { food -> GlassChip(food, onClick = { logMeal(food) }) }
-                GlassChip("Other…", onClick = { typingFood = true }, accent = MaterialTheme.colorScheme.primary)
+                state.quickFoods.forEach { food -> SystemChip(food, onClick = { logMeal(food) }) }
+                SystemChip("Other…", onClick = { typingFood = true }, accent = MaterialTheme.colorScheme.primary)
             }
         }
 
@@ -108,11 +109,11 @@ fun LogScreen(
 
         item(key = "days-header") {
             GroupHeader("Last 7 days") {
-                TextButton(onClick = onShare, contentPadding = PaddingValues(horizontal = 8.dp)) { Text("Share for doctor") }
+                SystemTextButton("Share", onClick = onShare)
             }
         }
         item(key = "days") {
-            GlassGroup {
+            SystemGroup {
                 state.days.forEachIndexed { i, day ->
                     if (i > 0) GroupSeparator(start = 16.dp)
                     DayRow(day, boundary)
@@ -126,26 +127,25 @@ fun LogScreen(
 
     if (typingFood) {
         var text by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { typingFood = false },
-            title = { Text("What did you eat?") },
-            text = { OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        logMeal(text)
-                        typingFood = false
-                    },
-                    enabled = text.isNotBlank(),
-                ) { Text("Log") }
+        SystemDialog(
+            title = "Meal",
+            onDismiss = { typingFood = false },
+            confirmText = "Log",
+            onConfirm = {
+                logMeal(text.trim())
+                typingFood = false
             },
-            dismissButton = { TextButton(onClick = { typingFood = false }) { Text("Cancel") } },
-        )
+            confirmEnabled = text.isNotBlank(),
+        ) {
+            Text("What did you eat?", style = MaterialTheme.typography.titleMedium)
+            OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        }
     }
 }
 
 private val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
 private val dayFormat = DateTimeFormatter.ofPattern("EEE d MMM")
+private val chartDayFormat = DateTimeFormatter.ofPattern("d MMM")
 
 @Composable
 private fun DayRow(day: HealthDay, boundary: DayBoundary) {
@@ -177,11 +177,11 @@ private fun SpendChart(spend: List<Pair<LocalDate, Double>>) {
     val total = spend.sumOf { it.second }
     val logged = spend.count { it.second > 0 }
     val bar = Brush.verticalGradient(listOf(Stat.MONEY.colorLight, Stat.MONEY.color))
-    val track = Stat.MONEY.color.copy(alpha = 0.10f)
+    val track = Stat.MONEY.color.copy(alpha = 0.08f)
     Column(
         Modifier
             .fillMaxWidth()
-            .frosted()
+            .systemPanel()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -199,11 +199,17 @@ private fun SpendChart(spend: List<Pair<LocalDate, Double>>) {
             val width = (size.width - gap * (spend.size - 1)) / spend.size
             spend.forEachIndexed { i, (_, value) ->
                 val x = i * (width + gap)
-                drawRoundRect(track, Offset(x, 0f), Size(width, size.height), CornerRadius(width / 3))
+                drawRect(track, Offset(x, 0f), Size(width, size.height))
                 val h = (value / max * size.height).toFloat()
                 if (h > 0f) {
-                    drawRoundRect(bar, Offset(x, size.height - h), Size(width, h), CornerRadius(width / 3))
+                    drawRect(bar, Offset(x, size.height - h), Size(width, h))
                 }
+            }
+        }
+        if (spend.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth()) {
+                Muted(spend.first().first.format(chartDayFormat), Modifier.weight(1f))
+                Muted("Today")
             }
         }
         Muted(
@@ -217,9 +223,7 @@ private fun SpendChart(spend: List<Pair<LocalDate, Double>>) {
 }
 
 @Composable
-private fun Muted(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier)
-}
+private fun Muted(text: String, modifier: Modifier = Modifier) = MutedText(text, modifier)
 
 /** Green to red, so the scale reads at a glance without the labels. */
 private val gasColors = mapOf(
@@ -230,7 +234,7 @@ private val gasColors = mapOf(
     5 to Color(0xFFFF6A5E),
 )
 
-/** Five frosted tiles in one row; one tap logs that level. */
+/** Five systemPanel tiles in one row; one tap logs that level. */
 @Composable
 private fun GasPicker(onGas: (Int) -> Unit) {
     val haptics = LocalHapticFeedback.current
@@ -238,12 +242,12 @@ private fun GasPicker(onGas: (Int) -> Unit) {
         GasLevels.forEach { level ->
             val color = gasColors.getValue(level)
             val interaction = remember { MutableInteractionSource() }
-            val shape = RoundedCornerShape(18.dp)
+            val shape = PanelShape
             Column(
                 Modifier
                     .weight(1f)
                     .pressScale(interaction, 0.92f)
-                    .frosted(shape, tint = color.copy(alpha = 0.08f))
+                    .systemPanel(shape, accent = color, glow = Glow.None)
                     .clickable(interactionSource = interaction, indication = null, role = Role.Button) {
                         haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                         onGas(level)
