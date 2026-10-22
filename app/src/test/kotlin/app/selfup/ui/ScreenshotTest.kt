@@ -138,7 +138,7 @@ class ScreenshotTest {
 
     @Test
     fun records() = shoot("03-records", tab = "records") {
-        RecordsScreen(RecordsState(emptyList(), today.plusDays(10)), padding, GymStatus.NeedsUpdate, onConnectGym = {}, onOpen = {})
+        RecordsScreen(RecordsState(emptyList(), LocalDate.of(2026, 11, 7)), padding, GymStatus.NeedsUpdate, onConnectGym = {}, onOpen = {})
     }
 
     @Test
