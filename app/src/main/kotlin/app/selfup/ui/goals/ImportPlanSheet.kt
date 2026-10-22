@@ -79,7 +79,7 @@ fun ImportPlanSheet(activeCount: Int, today: LocalDate, onImport: (List<Imported
         ) {
             SheetTitle("Import a plan")
             Text(
-                "Tell Claude your goals in the SelfUp project and ask for a plan code. Copy it, then paste it here.",
+                "Tell Claude your goals and ask for a plan code. Copy it, then paste it here.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -128,7 +128,7 @@ fun LogScreen(
                 onRestore()
             },
         ) {
-            Text("Everything in the app is replaced by the backup, and SelfUp restarts.", style = MaterialTheme.typography.bodyMedium)
+            Text("Everything in the app is replaced by the backup, and the System restarts.", style = MaterialTheme.typography.bodyMedium)
         }
     }
 

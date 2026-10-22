@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed-icon layer (Android 13+): the same window and chevrons, one colour. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.4" android:pathData="M38,32H70L76,38V70L70,76H38L32,70V38Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M54,44.25L67.5,57.75L62.25,57.75L54,49.5L45.75,57.75L40.5,57.75Z" />
+    <path android:fillColor="#99FFFFFF" android:pathData="M54,56.25L67.5,69.75L62.25,69.75L54,61.5L45.75,69.75L40.5,69.75Z" />
+</vector>

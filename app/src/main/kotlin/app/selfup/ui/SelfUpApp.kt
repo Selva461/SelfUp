@@ -225,7 +225,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
         ) {
             Text(
                 "Let quest reminders appear as a System window over any app, not only as a notification. " +
-                    "Turn on \"Display over other apps\" for SelfUp.",
+                    "Turn on \"Display over other apps\" for System.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -618,7 +618,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                                         context.startActivity(relaunch)
                                         Runtime.getRuntime().exit(0)
                                     } else {
-                                        snackbar.showSnackbar("That file isn't a SelfUp backup. Nothing was changed.")
+                                        snackbar.showSnackbar("That file isn't a System backup. Nothing was changed.")
                                     }
                                 }
                             }

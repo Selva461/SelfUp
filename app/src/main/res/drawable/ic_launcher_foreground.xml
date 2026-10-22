@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launcher icon: a glowing System window with the level-up chevrons (the notification glyph) inside.
+     Everything sits within the 66dp safe zone so any launcher mask keeps it whole. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Window glow, wide to tight. -->
+    <path android:strokeColor="#1445C4FF" android:strokeWidth="7" android:strokeLineJoin="round" android:pathData="M38,32H70L76,38V70L70,76H38L32,70V38Z" />
+    <path android:strokeColor="#2E45C4FF" android:strokeWidth="4" android:strokeLineJoin="round" android:pathData="M38,32H70L76,38V70L70,76H38L32,70V38Z" />
+    <path android:fillColor="#E602050B" android:pathData="M38,32H70L76,38V70L70,76H38L32,70V38Z" />
+    <!-- The window's screen, lit from behind the chevrons. -->
+    <path android:pathData="M38,32H70L76,38V70L70,76H38L32,70V38Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="54"
+                android:centerY="55"
+                android:gradientRadius="24">
+                <item android:offset="0" android:color="#4D45C4FF" />
+                <item android:offset="1" android:color="#0045C4FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:strokeColor="#FF45C4FF" android:strokeWidth="1.6" android:pathData="M38,32H70L76,38V70L70,76H38L32,70V38Z" />
+    <path android:strokeColor="#CCE6F8FF" android:strokeWidth="0.5" android:pathData="M38,32H70L76,38V70L70,76H38L32,70V38Z" />
+    <!-- Title bar rule and its corner ticks, as on the in-app System windows. -->
+    <path android:strokeColor="#8045C4FF" android:strokeWidth="0.6" android:pathData="M38,38.5H70" />
+    <path android:fillColor="#FF45C4FF" android:pathData="M36,35.4h4v1.2h-4zM68,35.4h4v1.2h-4z" />
+    <!-- Chevrons: the lower one dimmer, like an afterimage of the rise. -->
+    <path android:fillColor="#9945C4FF" android:pathData="M54,56.25L67.5,69.75L62.25,69.75L54,61.5L45.75,69.75L40.5,69.75Z" />
+    <path android:pathData="M54,44.25L67.5,57.75L62.25,57.75L54,49.5L45.75,57.75L40.5,57.75Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="54"
+                android:startY="44.25"
+                android:endX="54"
+                android:endY="57.75">
+                <item android:offset="0" android:color="#FFF2FBFF" />
+                <item android:offset="1" android:color="#FF45C4FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>
