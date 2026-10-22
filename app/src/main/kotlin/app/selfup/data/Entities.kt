@@ -120,13 +120,6 @@ data class MealLogEntity(
     val food: String,
 )
 
-@Entity(tableName = "gas_log", indices = [Index("atMillis")])
-data class GasLogEntity(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val atMillis: Long,
-    val level: Int,
-)
-
 data class DailySpendRow(
     val epochDay: Long,
     val total: Double,
@@ -226,4 +219,64 @@ object XpReason {
     const val SKILL = "skill"
     const val MIND = "mind"
     const val GOAL = "goal"
+    const val FOCUS = "focus"
+}
+
+/** How each closed quest day went, one row per day: the streak's audit trail. */
+@Entity(tableName = "day_record")
+data class DayRecordEntity(
+    @PrimaryKey val epochDay: Long,
+    val due: Int,
+    val missed: Int,
+    /** A [app.selfup.core.DayOutcome] name. */
+    val outcome: String,
+    val streakAfter: Int,
+    val shieldsAfter: Int,
+    val xpLost: Int,
+    val closedAtMillis: Long,
+)
+
+/** One app's use on one quest day, from the usage log. Every app, not only entertainment. */
+@Entity(tableName = "app_usage_day", primaryKeys = ["epochDay", "pkg"])
+data class AppUsageDayEntity(
+    val epochDay: Long,
+    val pkg: String,
+    val foregroundMillis: Long,
+    val opens: Int,
+    val entertainment: Boolean,
+)
+
+/** The phone as a whole on one quest day. */
+@Entity(tableName = "phone_day")
+data class PhoneDayEntity(
+    @PrimaryKey val epochDay: Long,
+    val firstUseMillis: Long?,
+    val lastUseMillis: Long?,
+    val totalMillis: Long,
+    val entertainmentMillis: Long,
+    val opens: Int,
+    /** Opens from 23:00 until the reset. */
+    val lateOpens: Int,
+)
+
+/** Every lock, grace unlock, verified quest and bonus, as it happened. */
+@Entity(tableName = "focus_event", indices = [Index("epochDay")])
+data class FocusEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val atMillis: Long,
+    val epochDay: Long,
+    /** One of [FocusEventKind]. */
+    val kind: String,
+    val pkg: String?,
+    val questId: Long?,
+    /** Entertainment minutes used that day when it happened. */
+    val minutesUsed: Int?,
+)
+
+object FocusEventKind {
+    const val LOCKED = "locked"
+    const val GRACE = "grace"
+    const val VERIFIED = "verified"
+    const val BONUS = "bonus"
+    const val WARNED = "warned"
 }

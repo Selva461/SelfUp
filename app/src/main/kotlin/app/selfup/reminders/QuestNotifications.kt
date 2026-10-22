@@ -50,6 +50,7 @@ object QuestNotifications {
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
             .setContentIntent(openApp(context, quest.id))
+        if (PopupActivity.canUseFullScreen(context)) builder.setFullScreenIntent(popup(context, quest.id), true)
         // Logging quests need a number, so they open the app instead of completing in place.
         if (quest.input !is CompletionInput.Number) {
             builder.addAction(0, context.getString(R.string.action_done), doneAction(context, quest.id))
@@ -74,6 +75,13 @@ object QuestNotifications {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             data = Uri.parse("selfup://open/$questId")
         },
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+
+    private fun popup(context: Context, questId: Long): PendingIntent = PendingIntent.getActivity(
+        context,
+        questId.toInt(),
+        PopupActivity.quest(context, questId),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 

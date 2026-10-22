@@ -3,6 +3,7 @@ package app.selfup.data
 import androidx.room.withTransaction
 import app.selfup.core.CompletionInput
 import app.selfup.core.DailyReset
+import app.selfup.core.DayOutcome
 import app.selfup.core.DayBoundary
 import app.selfup.core.DefaultQuests
 import app.selfup.core.Quest
@@ -10,6 +11,8 @@ import app.selfup.core.Schedule
 import app.selfup.core.Stat
 import app.selfup.core.StatChange
 import app.selfup.core.StatProgress
+import app.selfup.core.StreakState
+import app.selfup.core.Streaks
 import app.selfup.core.TestDay
 import app.selfup.core.XpRules
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -37,8 +40,12 @@ data class DayQuest(
 data class DayCloseReport(
     val missed: List<Quest> = emptyList(),
     val xpLost: Int = 0,
+    /** Days whose misses a streak shield absorbed, so they cost nothing. */
+    val shieldsUsed: Int = 0,
+    /** The streak that broke, when one did. */
+    val streakLost: Int = 0,
 ) {
-    val isEmpty: Boolean get() = missed.isEmpty()
+    val isEmpty: Boolean get() = missed.isEmpty() && shieldsUsed == 0 && streakLost == 0
 }
 
 /** What the reminder scheduler needs to know about one quest. */
@@ -69,6 +76,7 @@ class LifeRepository(
     private val completions = db.completionDao()
     private val xp = db.xpDao()
     private val meta = db.metaDao()
+    private val tracking = db.trackingDao()
 
     fun today(): LocalDate = dayBoundary.questDay(clock.instant())
 
@@ -80,6 +88,9 @@ class LifeRepository(
             delay(Duration.between(now, dayBoundary.nextReset(now)).toMillis() + 1)
         }
     }.distinctUntilChanged()
+
+    /** The daily streak, as of the last closed day. */
+    fun observeStreak(): Flow<StreakState> = meta.observe(STREAK_KEY).map(StreakState::decode).distinctUntilChanged()
 
     fun observeStats(stats: List<Stat> = Stat.launchSet): Flow<List<StatProgress>> =
         xp.observeTotals().map { rows -> StatProgress.of(rows.toTotals(), stats) }
@@ -170,14 +181,56 @@ class LifeRepository(
             requireNotNull(value) { "\"${quest.title}\" needs a number to complete" }
         }
 
+        complete(quest, dayBoundary.questDay(clock.instant()), value)
+    }
+
+    /**
+     * Completes [questId] for a day that has already ended, when the System verified it
+     * itself (a "Phone off by 23:00" quest checked against the usage log). Call it before
+     * [closeFinishedDays] settles that day, or the miss is penalized first.
+     */
+    suspend fun completeVerified(questId: Long, day: LocalDate): CompletionResult = db.withTransaction {
+        val quest = quests.get(questId)?.let(QuestMapper::toDomain)
+            ?: return@withTransaction CompletionResult.NotFound
+        if (quest.input is CompletionInput.Number) return@withTransaction CompletionResult.NotDue
+        complete(quest, day, null)
+    }
+
+    /** Due daily quests on [day] that existed by then, done or not. */
+    suspend fun dailiesDueOn(day: LocalDate): List<Quest> {
+        val rows = quests.all()
+        val createdOn = rows.associate { it.quest.id to dayBoundary.questDay(Instant.ofEpochMilli(it.quest.createdAtMillis)) }
+        return DailyReset.missed(rows.map(QuestMapper::toDomain), day, emptySet()) { !createdOn.getValue(it.id).isAfter(day) }
+    }
+
+    /** XP that isn't tied to a quest, such as staying within the screen-time budget. */
+    suspend fun grantBonus(stat: Stat, xpAmount: Int, day: LocalDate, reason: String): List<StatChange> = db.withTransaction {
+        val changes = XpRules.apply(xp.totals().toTotals(), mapOf(stat to xpAmount))
+        xp.insertAll(
+            listOf(
+                XpEventEntity(
+                    stat = stat.key,
+                    delta = xpAmount,
+                    reason = reason,
+                    questId = null,
+                    completionId = null,
+                    epochDay = day.toEpochDay(),
+                    createdAtMillis = clock.millis(),
+                ),
+            ),
+        )
+        changes
+    }
+
+    private suspend fun complete(quest: Quest, day: LocalDate, value: Double?): CompletionResult {
+        val questId = quest.id
         val now = clock.instant()
-        val day = dayBoundary.questDay(now)
-        if (!quest.schedule.isDueOn(day)) return@withTransaction CompletionResult.NotDue
+        if (!quest.schedule.isDueOn(day)) return CompletionResult.NotDue
         val alreadyDone = when (quest.schedule) {
             is Schedule.OneTime -> completions.latest(questId) != null
             is Schedule.Recurring -> completions.get(questId, day.toEpochDay()) != null
         }
-        if (alreadyDone) return@withTransaction CompletionResult.AlreadyDone
+        if (alreadyDone) return CompletionResult.AlreadyDone
 
         val completionId = completions.insert(
             CompletionEntity(
@@ -202,7 +255,7 @@ class LifeRepository(
                 )
             },
         )
-        CompletionResult.Completed(changes)
+        return CompletionResult.Completed(changes)
     }
 
     /**
@@ -267,11 +320,39 @@ class LifeRepository(
         val now = clock.millis()
         val missedYesterday = mutableListOf<Quest>()
         var xpLost = 0
+        var streak = StreakState.decode(meta.get(STREAK_KEY))
+        var shieldsUsed = 0
+        var streakLost = 0
 
         var day = lastClosed.plusDays(1)
         while (day.isBefore(today)) {
             val done = completions.questIdsOn(day.toEpochDay()).toSet()
-            val missed = DailyReset.missed(all, day, done) { quest -> !createdOn.getValue(quest.id).isAfter(day) }
+            val existed = { quest: Quest -> !createdOn.getValue(quest.id).isAfter(day) }
+            val missed = DailyReset.missed(all, day, done, existed)
+            val due = DailyReset.missed(all, day, emptySet(), existed).size
+            val before = streak.current
+            val (next, outcome) = Streaks.close(streak, due, missed.size)
+            streak = next
+            val record = DayRecordEntity(
+                epochDay = day.toEpochDay(),
+                due = due,
+                missed = missed.size,
+                outcome = outcome.name,
+                streakAfter = streak.current,
+                shieldsAfter = streak.shields,
+                xpLost = 0,
+                closedAtMillis = now,
+            )
+            when (outcome) {
+                DayOutcome.SHIELDED -> {
+                    tracking.putDay(record)
+                    shieldsUsed++
+                    day = day.plusDays(1)
+                    continue
+                }
+                DayOutcome.BROKEN -> streakLost = maxOf(streakLost, before)
+                DayOutcome.EMPTY, DayOutcome.CLEAR -> Unit
+            }
             val penalties = DailyReset.penalties(xp.totals().toTotals(), missed)
             xp.insertAll(
                 penalties.map {
@@ -287,13 +368,15 @@ class LifeRepository(
                 },
             )
             xpLost -= penalties.sumOf { it.delta }
+            tracking.putDay(record.copy(xpLost = -penalties.sumOf { it.delta }))
             if (day == yesterday) missedYesterday += missed
             day = day.plusDays(1)
         }
 
+        meta.put(MetaEntity(STREAK_KEY, streak.encode()))
         missedYesterday.forEach { saveQuest(DailyReset.penaltyQuest(it, today)) }
         quests.deletePenaltyQuestsExpiredBefore(today.toEpochDay())
-        DayCloseReport(missedYesterday, xpLost)
+        DayCloseReport(missedYesterday, xpLost, shieldsUsed, streakLost)
     }
 
     /**
@@ -328,5 +411,6 @@ class LifeRepository(
         const val SEEDED_KEY = "seeded_default_quests"
         const val LAST_CLOSED_DAY_KEY = "last_closed_quest_day"
         const val TEST_DAY_KEY = "test_day_quest"
+        const val STREAK_KEY = "streak"
     }
 }

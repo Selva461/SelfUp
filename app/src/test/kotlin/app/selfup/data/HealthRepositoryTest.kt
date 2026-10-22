@@ -48,19 +48,12 @@ class HealthRepositoryTest {
     fun tearDown() = db.close()
 
     @Test
-    fun mealsAndGasRoundTripAndUndo() = runTest {
+    fun mealsRoundTripAndUndo() = runTest {
         val meal = health.logMeal("  Grill ")
-        health.logGas(4)
         assertEquals(listOf("Grill"), health.observeMeals(7).first().map { it.food })
-        assertEquals(listOf(4), health.observeGas(7).first().map { it.level })
 
         health.deleteMeal(meal)
         assertTrue(health.observeMeals(7).first().isEmpty())
-    }
-
-    @Test(expected = IllegalArgumentException::class)
-    fun gasOutsideTheScaleIsRejected() = runTest {
-        health.logGas(9)
     }
 
     @Test
@@ -85,7 +78,7 @@ class HealthRepositoryTest {
     @Test
     fun csvExportIncludesEveryEntry() = runTest {
         health.logMeal("Dosa")
-        health.logGas(2)
+        health.logMeal("Grill")
         val lines = health.exportCsv().trim().lines()
         assertEquals("date,time,type,detail", lines.first())
         assertEquals(3, lines.size)

@@ -3,6 +3,7 @@ package app.selfup
 import android.app.Application
 import app.selfup.ai.AiSettings
 import app.selfup.ai.GroqPlanner
+import app.selfup.data.Backup
 import app.selfup.data.GoalsRepository
 import app.selfup.data.HealthRepository
 import app.selfup.data.LifeRepository
@@ -18,6 +19,9 @@ import app.selfup.reminders.ReminderScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import app.selfup.focus.BlockerService
+import app.selfup.focus.FocusRepository
+import app.selfup.focus.UsageReader
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -38,6 +42,12 @@ class SelfUpApplication : Application() {
     val mind: MindRepository by lazy { MindRepository(database, repository.clock, repository.dayBoundary) }
 
     val goals: GoalsRepository by lazy { GoalsRepository(database, repository.clock, repository.dayBoundary) }
+
+    val focus: FocusRepository by lazy {
+        FocusRepository(UsageReader(this), repository, database.metaDao(), database.trackingDao(), blockerEnabled = { BlockerService.isEnabled(this) })
+    }
+
+    val backup: Backup by lazy { Backup(this, database) }
 
     val ai: AiSettings by lazy { AiSettings(this) }
 

@@ -109,6 +109,9 @@ interface MetaDao {
     @Query("SELECT value FROM app_meta WHERE `key` = :key")
     suspend fun get(key: String): String?
 
+    @Query("SELECT value FROM app_meta WHERE `key` = :key")
+    fun observe(key: String): Flow<String?>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun put(meta: MetaEntity)
 
@@ -117,30 +120,45 @@ interface MetaDao {
 }
 
 @Dao
+interface TrackingDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putDay(day: DayRecordEntity)
+
+    @Query("SELECT * FROM day_record ORDER BY epochDay DESC LIMIT :limit")
+    suspend fun recentDays(limit: Int): List<DayRecordEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putAppUsage(rows: List<AppUsageDayEntity>)
+
+    @Query("SELECT * FROM app_usage_day WHERE epochDay = :epochDay ORDER BY foregroundMillis DESC")
+    suspend fun appUsageOn(epochDay: Long): List<AppUsageDayEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putPhoneDay(day: PhoneDayEntity)
+
+    @Query("SELECT * FROM phone_day WHERE epochDay = :epochDay")
+    suspend fun phoneDay(epochDay: Long): PhoneDayEntity?
+
+    @Insert
+    suspend fun insertFocusEvent(event: FocusEventEntity): Long
+
+    @Query("SELECT * FROM focus_event WHERE epochDay = :epochDay ORDER BY atMillis")
+    suspend fun focusEventsOn(epochDay: Long): List<FocusEventEntity>
+}
+
+@Dao
 interface HealthDao {
     @Query("SELECT * FROM meal_log WHERE atMillis >= :sinceMillis ORDER BY atMillis DESC")
     fun observeMeals(sinceMillis: Long): Flow<List<MealLogEntity>>
 
-    @Query("SELECT * FROM gas_log WHERE atMillis >= :sinceMillis ORDER BY atMillis DESC")
-    fun observeGas(sinceMillis: Long): Flow<List<GasLogEntity>>
-
     @Query("SELECT * FROM meal_log ORDER BY atMillis")
     suspend fun allMeals(): List<MealLogEntity>
-
-    @Query("SELECT * FROM gas_log ORDER BY atMillis")
-    suspend fun allGas(): List<GasLogEntity>
 
     @Insert
     suspend fun insertMeal(meal: MealLogEntity): Long
 
-    @Insert
-    suspend fun insertGas(gas: GasLogEntity): Long
-
     @Query("DELETE FROM meal_log WHERE id = :id")
     suspend fun deleteMeal(id: Long)
-
-    @Query("DELETE FROM gas_log WHERE id = :id")
-    suspend fun deleteGas(id: Long)
 
     /** Money logged through number quests, per quest day. */
     @Query(

@@ -1,7 +1,14 @@
 package app.selfup.ui
 
+import app.selfup.reminders.PopupActivity
+import app.selfup.data.Backup
+import app.selfup.focus.BlockerService
+import app.selfup.focus.FocusRepository
+import app.selfup.focus.UsageReader
+import app.selfup.ui.home.screenTimeSection
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -34,11 +41,13 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -93,6 +102,7 @@ import app.selfup.gym.GymSync
 import app.selfup.ui.components.CelebrationOverlay
 import app.selfup.ui.components.LevelUpOverlay
 import app.selfup.ui.components.NumberEntryDialog
+import app.selfup.ui.components.SystemDialog
 import app.selfup.ui.system.SystemBackground
 import app.selfup.ui.system.SystemIconButton
 import app.selfup.ui.system.BlurLayers
@@ -172,8 +182,9 @@ private sealed interface Editing {
 }
 
 @Composable
-fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner, gym: GymSync) {
-    val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository) } })
+fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner, gym: GymSync, focus: FocusRepository, backup: Backup) {
+    val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository, focus) } })
+    val screenTime by remember(focus) { focus.observeToday() }.collectAsStateWithLifecycle(null)
     val state by game.state.collectAsStateWithLifecycle()
     val allQuests by game.allQuests.collectAsStateWithLifecycle()
 
@@ -187,6 +198,36 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    // Reminders pop up as System windows over other apps, which needs "Display over other apps".
+    // Ask once, the first time a quest has a reminder.
+    val prefs = remember { context.getSharedPreferences("ui", Context.MODE_PRIVATE) }
+    var askPopups by remember { mutableStateOf(false) }
+    LaunchedEffect(hasReminders) {
+        if (hasReminders && !PopupActivity.canPopUp(context) && !prefs.getBoolean(ASKED_POPUPS, false)) askPopups = true
+    }
+    if (askPopups) {
+        SystemDialog(
+            title = "Reminder popups",
+            onDismiss = {
+                askPopups = false
+                prefs.edit().putBoolean(ASKED_POPUPS, true).apply()
+            },
+            confirmText = "Allow",
+            onConfirm = {
+                askPopups = false
+                prefs.edit().putBoolean(ASKED_POPUPS, true).apply()
+                context.startActivity(PopupActivity.overlaySettings(context))
+            },
+            dismissText = "Not now",
+        ) {
+            Text(
+                "Let quest reminders appear as a System window over any app, not only as a notification. " +
+                    "Turn on \"Display over other apps\" for SelfUp.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
         }
     }
 
@@ -343,13 +384,30 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                     levelUp = event.changes
                 }
                 is GameEvent.DayClosed -> launch {
-                    haptics.performHapticFeedback(HapticFeedbackType.Reject)
-                    val count = event.report.missed.size
+                    val report = event.report
+                    val count = report.missed.size
                     val quests = if (count == 1) "1 daily quest" else "$count daily quests"
-                    snackbar.showSnackbar(
-                        "Penalty: missed $quests yesterday, −${event.report.xpLost} XP. Penalty quests added.",
-                        duration = SnackbarDuration.Long,
-                    )
+                    val lines = buildList {
+                        if (report.shieldsUsed > 0) {
+                            add(if (report.shieldsUsed == 1) "A shield blocked a missed day." else "${report.shieldsUsed} shields blocked missed days.")
+                        }
+                        if (count > 0) add("Penalty: missed $quests yesterday, −${report.xpLost} XP. Penalty quests added.")
+                        else if (report.xpLost > 0) add("Penalty: −${report.xpLost} XP for missed days.")
+                        if (report.streakLost > 1) add("${report.streakLost}-day streak lost.")
+                    }
+                    if (lines.isNotEmpty()) {
+                        haptics.performHapticFeedback(if (count > 0 || report.xpLost > 0) HapticFeedbackType.Reject else HapticFeedbackType.Confirm)
+                        snackbar.showSnackbar(lines.joinToString(" "), duration = SnackbarDuration.Long)
+                    }
+                }
+                is GameEvent.FocusSettled -> launch {
+                    val report = event.report
+                    val lines = buildList {
+                        report.verified.forEach { add("Verified: ${it.title}.") }
+                        if (report.bonusXp > 0) add("Under the screen-time budget yesterday: +${report.bonusXp} XP Life.")
+                    }
+                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                    snackbar.showSnackbar(lines.joinToString(" "), duration = SnackbarDuration.Long)
                 }
                 is GameEvent.Completed -> launch {
                     haptics.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -409,6 +467,11 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                             onEdit = edit,
                             onStatClick = { nav.navigate(Routes.stat(it)) },
                             extra = {
+                                screenTimeSection(
+                                    screenTime,
+                                    onAllowUsage = { context.startActivity(UsageReader.settingsIntent()) },
+                                    onEnableBlocker = { context.startActivity(BlockerService.settingsIntent()) },
+                                )
                                 planSection(
                                     goalsState,
                                     onTask = { item ->
@@ -537,13 +600,35 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                     }
                     composable(Routes.LOG) {
                         val log: LogViewModel = viewModel(factory = viewModelFactory { initializer { LogViewModel(health) } })
+                        val saveBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+                            if (uri != null) {
+                                scope.launch {
+                                    val ok = runCatching { backup.export(uri) }.isSuccess
+                                    snackbar.showSnackbar(if (ok) "Backup saved." else "Couldn't save the backup.")
+                                }
+                            }
+                        }
+                        val openBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                            if (uri != null) {
+                                scope.launch {
+                                    if (runCatching { backup.restore(uri) }.getOrDefault(false)) {
+                                        // The database is closed now; start fresh so every screen reads the restored data.
+                                        val relaunch = requireNotNull(context.packageManager.getLaunchIntentForPackage(context.packageName))
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                                        context.startActivity(relaunch)
+                                        Runtime.getRuntime().exit(0)
+                                    } else {
+                                        snackbar.showSnackbar("That file isn't a SelfUp backup. Nothing was changed.")
+                                    }
+                                }
+                            }
+                        }
                         val logState by log.state.collectAsStateWithLifecycle()
                         LaunchedEffect(log) {
                             log.events.collect { event ->
                                 launch {
                                     val text = when (event) {
                                         is LogEvent.MealLogged -> "Logged ${event.food}"
-                                        is LogEvent.GasLogged -> "Logged gas ${event.level}"
                                     }
                                     val result = snackbar.showSnackbar(text, actionLabel = "Undo", duration = SnackbarDuration.Short)
                                     if (result == SnackbarResult.ActionPerformed) log.undo(event)
@@ -555,12 +640,13 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                             boundary = health.dayBoundary,
                             contentPadding = padding,
                             onMeal = log::logMeal,
-                            onGas = log::logGas,
+                            onBackup = { saveBackup.launch("selfup-${health.today()}.db") },
+                            onRestore = { openBackup.launch(arrayOf("*/*")) },
                             onShare = {
                                 scope.launch {
                                     val send = Intent(Intent.ACTION_SEND).apply {
                                         type = "text/plain"
-                                        putExtra(Intent.EXTRA_SUBJECT, "Food and gas log")
+                                        putExtra(Intent.EXTRA_SUBJECT, "Food log")
                                         putExtra(Intent.EXTRA_TEXT, log.exportCsv())
                                     }
                                     context.startActivity(Intent.createChooser(send, "Share log"))
@@ -729,3 +815,5 @@ private fun androidx.navigation.NavController.switchTab(route: String) {
         restoreState = true
     }
 }
+
+private const val ASKED_POPUPS = "asked_popups"

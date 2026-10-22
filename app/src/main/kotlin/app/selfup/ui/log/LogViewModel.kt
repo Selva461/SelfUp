@@ -23,20 +23,18 @@ data class LogState(
 
 sealed interface LogEvent {
     data class MealLogged(val id: Long, val food: String) : LogEvent
-    data class GasLogged(val id: Long, val level: Int) : LogEvent
 }
 
 class LogViewModel(private val health: HealthRepository) : ViewModel() {
     val state: StateFlow<LogState> = combine(
         health.observeMeals(HISTORY_DAYS),
-        health.observeGas(HISTORY_DAYS),
         health.observeDailySpend(SPEND_DAYS),
-    ) { meals, gas, spend ->
+    ) { meals, spend ->
         val today = health.today()
         val days = (0 until SHOWN_DAYS).map { today.minusDays(it) }
         LogState(
             quickFoods = HealthLog.quickFoods(meals),
-            days = HealthLog.byDay(meals, gas, health.dayBoundary, days),
+            days = HealthLog.byDay(meals, health.dayBoundary, days),
             spend = spend,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LogState())
@@ -49,15 +47,10 @@ class LogViewModel(private val health: HealthRepository) : ViewModel() {
         viewModelScope.launch { _events.send(LogEvent.MealLogged(health.logMeal(food), food.trim())) }
     }
 
-    fun logGas(level: Int) {
-        viewModelScope.launch { _events.send(LogEvent.GasLogged(health.logGas(level), level)) }
-    }
-
     fun undo(event: LogEvent) {
         viewModelScope.launch {
             when (event) {
                 is LogEvent.MealLogged -> health.deleteMeal(event.id)
-                is LogEvent.GasLogged -> health.deleteGas(event.id)
             }
         }
     }

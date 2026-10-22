@@ -12,29 +12,14 @@ public data class MealEntry(val id: Long = 0, val at: Instant, val food: String)
     }
 }
 
-/** A gas reading on a 1 (none) to 5 (severe) scale. */
-public data class GasEntry(val id: Long = 0, val at: Instant, val level: Int) {
-    init {
-        require(level in GasLevels) { "Gas level must be 1..5, was $level" }
-    }
-}
-
-public val GasLevels: IntRange = 1..5
-
 public data class HealthDay(
     val day: LocalDate,
     val meals: List<MealEntry>,
-    val gas: List<GasEntry>,
 ) {
     val lastMealAt: Instant? get() = meals.maxOfOrNull { it.at }
-    val averageGas: Double? get() = gas.takeIf { it.isNotEmpty() }?.map { it.level }?.average()
-    val maxGas: Int? get() = gas.maxOfOrNull { it.level }
 }
 
-/**
- * Food and gas tracking for the digestive investigation. This only records and
- * summarizes; it draws no conclusions, which are for a doctor.
- */
+/** Meal tracking: what was eaten and when, grouped by quest day. */
 public object HealthLog {
     /** Starting presets from the usual diet; the most-used foods float to the front. */
     public val defaultFoods: List<String> = listOf(
@@ -57,30 +42,25 @@ public object HealthLog {
     /** Groups entries by quest day, one [HealthDay] per day in [days] (newest first). */
     public fun byDay(
         meals: List<MealEntry>,
-        gas: List<GasEntry>,
         boundary: DayBoundary,
         days: List<LocalDate>,
     ): List<HealthDay> {
         val mealsByDay = meals.groupBy { boundary.questDay(it.at) }
-        val gasByDay = gas.groupBy { boundary.questDay(it.at) }
         return days.sortedDescending().map { day ->
             HealthDay(
                 day = day,
                 meals = mealsByDay[day].orEmpty().sortedBy { it.at },
-                gas = gasByDay[day].orEmpty().sortedBy { it.at },
             )
         }
     }
 
     /**
-     * A plain CSV of every entry, oldest first, for sharing with a doctor:
-     * `date,time,type,detail`.
+     * A plain CSV of every meal, oldest first, for sharing: `date,time,type,detail`.
      */
-    public fun toCsv(meals: List<MealEntry>, gas: List<GasEntry>, boundary: DayBoundary): String {
+    public fun toCsv(meals: List<MealEntry>, boundary: DayBoundary): String {
         val date = DateTimeFormatter.ISO_LOCAL_DATE
         val time = DateTimeFormatter.ofPattern("HH:mm")
-        val rows = meals.map { Triple(it.at, "meal", csvField(it.food)) } +
-            gas.map { Triple(it.at, "gas", it.level.toString()) }
+        val rows = meals.map { Triple(it.at, "meal", csvField(it.food)) }
         return buildString {
             appendLine("date,time,type,detail")
             rows.sortedBy { it.first }.forEach { (at, type, detail) ->

@@ -11,6 +11,7 @@ import app.selfup.core.Difficulty
 import app.selfup.core.Quest
 import app.selfup.core.Schedule
 import app.selfup.core.Stat
+import app.selfup.core.StreakState
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -276,6 +277,41 @@ class LifeRepositoryTest {
         assertEquals(15, report.xpLost)
         assertEquals(listOf(gym), report.missed.map { it.id })
         assertEquals(1, repo.observeAllQuests().first().count { it.penaltyFor == gym })
+    }
+
+    @Test
+    fun aWeekOfClearDaysEarnsAShieldThatAbsorbsTheNextMiss() = runTest {
+        repo.closeFinishedDays()
+        earn(Stat.STRENGTH, 30)
+        val gym = repo.saveQuest(quest())
+        repeat(7) {
+            repo.complete(gym)
+            clock.advance(Duration.ofDays(1))
+            repo.closeFinishedDays()
+        }
+        assertEquals(StreakState(current = 7, best = 7, shields = 1), repo.observeStreak().first())
+
+        clock.advance(Duration.ofDays(1))
+        val report = repo.closeFinishedDays()
+        assertEquals(1, report.shieldsUsed)
+        assertEquals(0, report.xpLost)
+        assertTrue(report.missed.isEmpty())
+        assertEquals(0, repo.observeAllQuests().first().count { it.penaltyFor == gym })
+        assertEquals(StreakState(current = 7, best = 7, shields = 0), repo.observeStreak().first())
+    }
+
+    @Test
+    fun aMissWithoutAShieldBreaksTheStreak() = runTest {
+        repo.closeFinishedDays()
+        val gym = repo.saveQuest(quest())
+        repeat(3) {
+            repo.complete(gym)
+            clock.advance(Duration.ofDays(1))
+            repo.closeFinishedDays()
+        }
+        clock.advance(Duration.ofDays(1))
+        assertEquals(3, repo.closeFinishedDays().streakLost)
+        assertEquals(StreakState(current = 0, best = 3), repo.observeStreak().first())
     }
 
     @Test

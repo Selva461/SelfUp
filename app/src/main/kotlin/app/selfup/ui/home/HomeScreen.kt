@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.selfup.core.Quest
 import app.selfup.core.Stat
+import app.selfup.core.StreakState
 import app.selfup.ui.TodayState
 import app.selfup.ui.components.GroupSeparator
 import app.selfup.ui.components.MutedText
@@ -28,6 +29,16 @@ import app.selfup.ui.theme.SystemColors
 import java.time.format.DateTimeFormatter
 
 private val dayFormat = DateTimeFormatter.ofPattern("EEE d MMM")
+
+/** "12 days · 1 shield": the streak and the shields that protect it. */
+private fun streakText(streak: StreakState): String {
+    val days = if (streak.current == 1) "1 day" else "${streak.current} days"
+    return when (streak.shields) {
+        0 -> days
+        1 -> "$days · 1 shield"
+        else -> "$days · ${streak.shields} shields"
+    }
+}
 
 /**
  * The Today tab, laid out like the System's first two windows: the status window, then the
@@ -60,6 +71,7 @@ fun HomeScreen(
                     "Title" to playerTitle(state.stats),
                     "Day" to (state.day?.format(dayFormat) ?: "–"),
                     "Quests" to "${state.doneCount} / ${state.quests.size}",
+                    "Streak" to streakText(state.streak),
                 ),
                 onStatClick = { onStatClick(it.stat) },
             )

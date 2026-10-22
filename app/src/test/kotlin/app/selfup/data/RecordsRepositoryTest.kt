@@ -173,6 +173,8 @@ class MigrationTest {
                 GoalEntity(measure = "mind:reaction", target = 220.0, baseline = null, startEpochDay = 0, deadlineEpochDay = 60, state = GoalState.ACTIVE, createdAtMillis = 0),
             )
             assertEquals(1, migrated.goalDao().withState(GoalState.ACTIVE).size)
+            migrated.trackingDao().putPhoneDay(PhoneDayEntity(0, null, null, 0, 0, 0, 0))
+            assertEquals(0, migrated.trackingDao().phoneDay(0)?.opens)
         } finally {
             migrated.close()
         }
@@ -183,6 +185,12 @@ class MigrationTest {
         execSQL("DROP TABLE skill_event")
         execSQL("DROP TABLE mind_score")
         execSQL("DROP TABLE goal")
+        execSQL("DROP TABLE day_record")
+        execSQL("DROP TABLE app_usage_day")
+        execSQL("DROP TABLE phone_day")
+        execSQL("DROP TABLE focus_event")
+        // v1 had gas_log; the 7 -> 8 migration drops it again.
+        execSQL("CREATE TABLE gas_log (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `atMillis` INTEGER NOT NULL, `level` INTEGER NOT NULL)")
         version = 1
     }
 }

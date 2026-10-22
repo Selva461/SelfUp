@@ -27,12 +27,14 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.selfup.core.CompletionInput
 import app.selfup.core.DayBoundary
 import app.selfup.core.Difficulty
-import app.selfup.core.GasEntry
 import app.selfup.core.HealthDay
 import app.selfup.core.MealEntry
 import app.selfup.core.Quest
 import app.selfup.core.Schedule
 import app.selfup.core.Stat
+import app.selfup.core.StreakState
+import app.selfup.focus.ScreenToday
+import app.selfup.ui.home.screenTimeSection
 import app.selfup.core.StatChange
 import app.selfup.core.StatProgress
 import app.selfup.data.CompletionEntity
@@ -112,6 +114,7 @@ class ScreenshotTest {
         quests = quests.mapIndexed { i, q ->
             DayQuest(q, if (i < 2) CompletionEntity(i.toLong(), q.id, today.toEpochDay(), 0, null) else null)
         },
+        streak = StreakState(current = 9, best = 14, shields = 1),
     )
 
     private val tabs = listOf(
@@ -127,6 +130,11 @@ class ScreenshotTest {
     @Test
     fun home() = shoot("01-home", tab = "home") {
         HomeScreen(todayState, padding, onComplete = {}, onEdit = {}, onStatClick = {}, extra = {
+            screenTimeSection(
+                ScreenToday(hasAccess = true, blockerOn = true, minutes = 22, apps = listOf("Instagram" to 14, "YouTube" to 8)),
+                onAllowUsage = {},
+                onEnableBlocker = {},
+            )
             planSection(GoalsOverview(emptyList(), today), onTask = {}, onGoals = {})
         })
     }
@@ -159,11 +167,10 @@ class ScreenshotTest {
             HealthDay(
                 today.minusDays(d),
                 if (d % 3 == 2L) emptyList() else listOf(MealEntry(1, at.minusSeconds(d * 86_400), "Rice and dal"), MealEntry(2, at.minusSeconds(d * 86_400 - 25_000), "Eggs")),
-                if (d % 2 == 0L) listOf(GasEntry(1, at, 2)) else emptyList(),
             )
         }
         val spend = (13 downTo 0).map { today.minusDays(it.toLong()) to listOf(0.0, 240.0, 120.0, 560.0, 90.0)[it % 5] }
-        LogScreen(LogState(days = days, spend = spend), DayBoundary(LocalTime.of(4, 0), zone), padding, onMeal = {}, onGas = {}, onShare = {})
+        LogScreen(LogState(days = days, spend = spend), DayBoundary(LocalTime.of(4, 0), zone), padding, onMeal = {}, onShare = {})
     }
 
     @Test

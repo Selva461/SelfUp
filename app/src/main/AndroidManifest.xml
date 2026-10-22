@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Runtime permission on Android 13+; without it reminders never show. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Only for planning with your own Groq key; nothing else goes online. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Reminder popups over other apps, styled as System windows. Granted in system settings. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- Lets a reminder light the screen and show its popup over the lock screen. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- Re-arm reminders after a reboot. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Read the Gym app's training log. Gym defines these as dangerous, so Android asks the
@@ -12,10 +17,21 @@
     <uses-permission android:name="dev.avles.gym.permission.READ_TRAINING" />
     <uses-permission android:name="dev.avles.gym.debug.permission.READ_TRAINING" />
 
-    <!-- Android 11+ hides other apps unless we say which ones we look for. -->
+    <!-- Read-only usage log for screen-time quests and the app lock. The user grants it in
+         system settings (Usage access); it is not a runtime prompt. -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- Android 11+ hides other apps unless we say which ones we look for. Launcher apps are
+         listed so installed games can be found by their category. -->
     <queries>
         <package android:name="dev.avles.gym" />
         <package android:name="dev.avles.gym.debug" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application
@@ -35,6 +51,39 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Reminder and budget popups, in their own translucent task over whatever is open. -->
+        <activity
+            android:name=".reminders.PopupActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:taskAffinity="app.selfup.popup"
+            android:theme="@style/Theme.SelfUp.Popup"
+            tools:targetApi="27" />
+
+        <!-- Shown over a locked app; its own task so leaving it never lands back in that app. -->
+        <activity
+            android:name=".focus.BlockActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:taskAffinity="app.selfup.lock" />
+
+        <!-- Bound only by the system (BIND_ACCESSIBILITY_SERVICE), once the user turns it on. -->
+        <service
+            android:name=".focus.BlockerService"
+            android:exported="false"
+            android:label="@string/blocker_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/blocker_service" />
+        </service>
 
         <!-- Only our own PendingIntents reach this, so it stays unexported. -->
         <receiver
