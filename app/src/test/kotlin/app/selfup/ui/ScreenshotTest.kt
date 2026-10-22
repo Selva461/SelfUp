@@ -33,6 +33,8 @@ import app.selfup.core.Quest
 import app.selfup.core.Schedule
 import app.selfup.core.Stat
 import app.selfup.core.StreakState
+import app.selfup.focus.ScreenToday
+import app.selfup.ui.home.screenTimeSection
 import app.selfup.core.StatChange
 import app.selfup.core.StatProgress
 import app.selfup.data.CompletionEntity
@@ -128,6 +130,11 @@ class ScreenshotTest {
     @Test
     fun home() = shoot("01-home", tab = "home") {
         HomeScreen(todayState, padding, onComplete = {}, onEdit = {}, onStatClick = {}, extra = {
+            screenTimeSection(
+                ScreenToday(hasAccess = true, blockerOn = true, minutes = 22, apps = listOf("Instagram" to 14, "YouTube" to 8)),
+                onAllowUsage = {},
+                onEnableBlocker = {},
+            )
             planSection(GoalsOverview(emptyList(), today), onTask = {}, onGoals = {})
         })
     }

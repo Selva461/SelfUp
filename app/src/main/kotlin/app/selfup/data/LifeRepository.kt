@@ -180,14 +180,56 @@ class LifeRepository(
             requireNotNull(value) { "\"${quest.title}\" needs a number to complete" }
         }
 
+        complete(quest, dayBoundary.questDay(clock.instant()), value)
+    }
+
+    /**
+     * Completes [questId] for a day that has already ended, when the System verified it
+     * itself (a "Phone off by 23:00" quest checked against the usage log). Call it before
+     * [closeFinishedDays] settles that day, or the miss is penalized first.
+     */
+    suspend fun completeVerified(questId: Long, day: LocalDate): CompletionResult = db.withTransaction {
+        val quest = quests.get(questId)?.let(QuestMapper::toDomain)
+            ?: return@withTransaction CompletionResult.NotFound
+        if (quest.input is CompletionInput.Number) return@withTransaction CompletionResult.NotDue
+        complete(quest, day, null)
+    }
+
+    /** Due daily quests on [day] that existed by then, done or not. */
+    suspend fun dailiesDueOn(day: LocalDate): List<Quest> {
+        val rows = quests.all()
+        val createdOn = rows.associate { it.quest.id to dayBoundary.questDay(Instant.ofEpochMilli(it.quest.createdAtMillis)) }
+        return DailyReset.missed(rows.map(QuestMapper::toDomain), day, emptySet()) { !createdOn.getValue(it.id).isAfter(day) }
+    }
+
+    /** XP that isn't tied to a quest, such as staying within the screen-time budget. */
+    suspend fun grantBonus(stat: Stat, xpAmount: Int, day: LocalDate, reason: String): List<StatChange> = db.withTransaction {
+        val changes = XpRules.apply(xp.totals().toTotals(), mapOf(stat to xpAmount))
+        xp.insertAll(
+            listOf(
+                XpEventEntity(
+                    stat = stat.key,
+                    delta = xpAmount,
+                    reason = reason,
+                    questId = null,
+                    completionId = null,
+                    epochDay = day.toEpochDay(),
+                    createdAtMillis = clock.millis(),
+                ),
+            ),
+        )
+        changes
+    }
+
+    private suspend fun complete(quest: Quest, day: LocalDate, value: Double?): CompletionResult {
+        val questId = quest.id
         val now = clock.instant()
-        val day = dayBoundary.questDay(now)
-        if (!quest.schedule.isDueOn(day)) return@withTransaction CompletionResult.NotDue
+        if (!quest.schedule.isDueOn(day)) return CompletionResult.NotDue
         val alreadyDone = when (quest.schedule) {
             is Schedule.OneTime -> completions.latest(questId) != null
             is Schedule.Recurring -> completions.get(questId, day.toEpochDay()) != null
         }
-        if (alreadyDone) return@withTransaction CompletionResult.AlreadyDone
+        if (alreadyDone) return CompletionResult.AlreadyDone
 
         val completionId = completions.insert(
             CompletionEntity(
@@ -212,7 +254,7 @@ class LifeRepository(
                 )
             },
         )
-        CompletionResult.Completed(changes)
+        return CompletionResult.Completed(changes)
     }
 
     /**

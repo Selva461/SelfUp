@@ -10,6 +10,8 @@ import app.selfup.data.CompletionResult
 import app.selfup.data.DayCloseReport
 import app.selfup.data.DayQuest
 import app.selfup.data.LifeRepository
+import app.selfup.focus.FocusReport
+import app.selfup.focus.FocusRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -43,17 +45,22 @@ sealed interface GameEvent {
 
     /** Finished days were settled: misses penalized or shielded, or the streak broke. */
     data class DayClosed(val report: DayCloseReport) : GameEvent
+
+    /** The usage log verified quests or earned the under-budget bonus for yesterday. */
+    data class FocusSettled(val report: FocusReport) : GameEvent
 }
 
 /** Today's quests and stats, shared by Home and Quests so both react to the same events. */
 @OptIn(ExperimentalCoroutinesApi::class)
-class GameViewModel(private val repository: LifeRepository) : ViewModel() {
+class GameViewModel(private val repository: LifeRepository, private val focus: FocusRepository? = null) : ViewModel() {
     private val _events = Channel<GameEvent>(Channel.BUFFERED)
     val events: Flow<GameEvent> = _events.receiveAsFlow()
 
     val state: StateFlow<TodayState> = repository.observeToday()
         // Settle penalties for finished days before showing the new one.
         .onEach { _ ->
+            // Screen-time checks first, so a verified "Phone off" quest isn't settled as missed.
+            focus?.settle()?.takeUnless { it.isEmpty }?.let { _events.send(GameEvent.FocusSettled(it)) }
             val report = repository.closeFinishedDays()
             if (!report.isEmpty) _events.send(GameEvent.DayClosed(report))
         }

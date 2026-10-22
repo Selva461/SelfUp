@@ -23,6 +23,9 @@ public class DayBoundary(
         return if (local.toLocalTime().isBefore(resetTime)) date.minusDays(1) else date
     }
 
+    /** The moment quest day [day] begins. */
+    public fun startOf(day: LocalDate): Instant = ZonedDateTime.of(day, resetTime, zone).toInstant()
+
     /** The first reset strictly after [instant]. */
     public fun nextReset(instant: Instant): Instant {
         val day = questDay(instant)

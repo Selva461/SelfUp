@@ -219,4 +219,5 @@ object XpReason {
     const val SKILL = "skill"
     const val MIND = "mind"
     const val GOAL = "goal"
+    const val FOCUS = "focus"
 }

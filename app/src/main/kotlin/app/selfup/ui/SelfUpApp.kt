@@ -1,5 +1,9 @@
 package app.selfup.ui
 
+import app.selfup.focus.BlockerService
+import app.selfup.focus.FocusRepository
+import app.selfup.focus.UsageReader
+import app.selfup.ui.home.screenTimeSection
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
@@ -172,8 +176,9 @@ private sealed interface Editing {
 }
 
 @Composable
-fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner, gym: GymSync) {
-    val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository) } })
+fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner, gym: GymSync, focus: FocusRepository) {
+    val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository, focus) } })
+    val screenTime by remember(focus) { focus.observeToday() }.collectAsStateWithLifecycle(null)
     val state by game.state.collectAsStateWithLifecycle()
     val allQuests by game.allQuests.collectAsStateWithLifecycle()
 
@@ -359,6 +364,15 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                         snackbar.showSnackbar(lines.joinToString(" "), duration = SnackbarDuration.Long)
                     }
                 }
+                is GameEvent.FocusSettled -> launch {
+                    val report = event.report
+                    val lines = buildList {
+                        report.verified.forEach { add("Verified: ${it.title}.") }
+                        if (report.bonusXp > 0) add("Under the screen-time budget yesterday: +${report.bonusXp} XP Life.")
+                    }
+                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                    snackbar.showSnackbar(lines.joinToString(" "), duration = SnackbarDuration.Long)
+                }
                 is GameEvent.Completed -> launch {
                     haptics.performHapticFeedback(HapticFeedbackType.Confirm)
                     val xp = event.changes.joinToString(" · ") { "+${it.delta} XP ${it.stat.displayName}" }
@@ -417,6 +431,11 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                             onEdit = edit,
                             onStatClick = { nav.navigate(Routes.stat(it)) },
                             extra = {
+                                screenTimeSection(
+                                    screenTime,
+                                    onAllowUsage = { context.startActivity(UsageReader.settingsIntent()) },
+                                    onEnableBlocker = { context.startActivity(BlockerService.settingsIntent()) },
+                                )
                                 planSection(
                                     goalsState,
                                     onTask = { item ->
