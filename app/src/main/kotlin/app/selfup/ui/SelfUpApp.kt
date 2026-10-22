@@ -1,5 +1,6 @@
 package app.selfup.ui
 
+import app.selfup.data.Backup
 import app.selfup.focus.BlockerService
 import app.selfup.focus.FocusRepository
 import app.selfup.focus.UsageReader
@@ -176,7 +177,7 @@ private sealed interface Editing {
 }
 
 @Composable
-fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner, gym: GymSync, focus: FocusRepository) {
+fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner, gym: GymSync, focus: FocusRepository, backup: Backup) {
     val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository, focus) } })
     val screenTime by remember(focus) { focus.observeToday() }.collectAsStateWithLifecycle(null)
     val state by game.state.collectAsStateWithLifecycle()
@@ -564,6 +565,29 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                     }
                     composable(Routes.LOG) {
                         val log: LogViewModel = viewModel(factory = viewModelFactory { initializer { LogViewModel(health) } })
+                        val saveBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+                            if (uri != null) {
+                                scope.launch {
+                                    val ok = runCatching { backup.export(uri) }.isSuccess
+                                    snackbar.showSnackbar(if (ok) "Backup saved." else "Couldn't save the backup.")
+                                }
+                            }
+                        }
+                        val openBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                            if (uri != null) {
+                                scope.launch {
+                                    if (runCatching { backup.restore(uri) }.getOrDefault(false)) {
+                                        // The database is closed now; start fresh so every screen reads the restored data.
+                                        val relaunch = requireNotNull(context.packageManager.getLaunchIntentForPackage(context.packageName))
+                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+                                        context.startActivity(relaunch)
+                                        Runtime.getRuntime().exit(0)
+                                    } else {
+                                        snackbar.showSnackbar("That file isn't a SelfUp backup. Nothing was changed.")
+                                    }
+                                }
+                            }
+                        }
                         val logState by log.state.collectAsStateWithLifecycle()
                         LaunchedEffect(log) {
                             log.events.collect { event ->
@@ -581,6 +605,8 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                             boundary = health.dayBoundary,
                             contentPadding = padding,
                             onMeal = log::logMeal,
+                            onBackup = { saveBackup.launch("selfup-${health.today()}.db") },
+                            onRestore = { openBackup.launch(arrayOf("*/*")) },
                             onShare = {
                                 scope.launch {
                                     val send = Intent(Intent.ACTION_SEND).apply {

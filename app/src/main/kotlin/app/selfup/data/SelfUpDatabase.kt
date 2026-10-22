@@ -20,7 +20,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MindScoreEntity::class,
         GoalEntity::class,
     ],
-    version = 8,
+    version = SelfUpDatabase.VERSION,
     exportSchema = true,
 )
 abstract class SelfUpDatabase : RoomDatabase() {
@@ -35,8 +35,11 @@ abstract class SelfUpDatabase : RoomDatabase() {
     abstract fun goalDao(): GoalDao
 
     companion object {
+        const val VERSION = 8
+        const val NAME = "selfup.db"
+
         fun create(context: Context): SelfUpDatabase =
-            Room.databaseBuilder(context, SelfUpDatabase::class.java, "selfup.db")
+            Room.databaseBuilder(context, SelfUpDatabase::class.java, NAME)
                 .addMigrations(*MIGRATIONS)
                 .build()
 

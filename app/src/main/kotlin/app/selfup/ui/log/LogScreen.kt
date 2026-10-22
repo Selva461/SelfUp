@@ -38,6 +38,7 @@ import app.selfup.ui.components.GroupSeparator
 import app.selfup.ui.components.LargeTitle
 import app.selfup.ui.components.MutedText
 import app.selfup.ui.components.SystemChip
+import app.selfup.ui.components.SystemButton
 import app.selfup.ui.components.SystemDialog
 import app.selfup.ui.components.SystemGroup
 import app.selfup.ui.components.SystemTextButton
@@ -59,8 +60,11 @@ fun LogScreen(
     contentPadding: PaddingValues,
     onMeal: (String) -> Unit,
     onShare: () -> Unit,
+    onBackup: () -> Unit = {},
+    onRestore: () -> Unit = {},
 ) {
     var typingFood by remember { mutableStateOf(false) }
+    var confirmRestore by remember { mutableStateOf(false) }
     val haptics = LocalHapticFeedback.current
     val logMeal: (String) -> Unit = {
         haptics.performHapticFeedback(HapticFeedbackType.Confirm)
@@ -102,6 +106,29 @@ fun LogScreen(
                     DayRow(day, boundary)
                 }
             }
+        }
+
+        item(key = "backup-header") { GroupHeader("Backup") }
+        item(key = "backup") {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Muted("Everything in one file: quests, XP, streak, records, skills and logs. Keep a copy somewhere safe.", Modifier.padding(start = 6.dp))
+                SystemButton("Save backup", onClick = onBackup)
+                SystemButton("Restore from backup", onClick = { confirmRestore = true }, filled = false)
+            }
+        }
+    }
+
+    if (confirmRestore) {
+        SystemDialog(
+            title = "Restore",
+            onDismiss = { confirmRestore = false },
+            confirmText = "Choose file",
+            onConfirm = {
+                confirmRestore = false
+                onRestore()
+            },
+        ) {
+            Text("Everything in the app is replaced by the backup, and SelfUp restarts.", style = MaterialTheme.typography.bodyMedium)
         }
     }
 

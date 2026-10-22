@@ -3,6 +3,7 @@ package app.selfup
 import android.app.Application
 import app.selfup.ai.AiSettings
 import app.selfup.ai.GroqPlanner
+import app.selfup.data.Backup
 import app.selfup.data.GoalsRepository
 import app.selfup.data.HealthRepository
 import app.selfup.data.LifeRepository
@@ -45,6 +46,8 @@ class SelfUpApplication : Application() {
     val focus: FocusRepository by lazy {
         FocusRepository(UsageReader(this), repository, database.metaDao(), blockerEnabled = { BlockerService.isEnabled(this) })
     }
+
+    val backup: Backup by lazy { Backup(this, database) }
 
     val ai: AiSettings by lazy { AiSettings(this) }
 

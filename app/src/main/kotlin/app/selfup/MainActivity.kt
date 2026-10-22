@@ -18,7 +18,7 @@ class MainActivity : ComponentActivity() {
         val app = application as SelfUpApplication
         setContent {
             SelfUpTheme {
-                SelfUpApp(app.repository, app.health, app.records, app.skills, app.mind, app.goals, app.ai, app.planner, app.gym, app.focus)
+                SelfUpApp(app.repository, app.health, app.records, app.skills, app.mind, app.goals, app.ai, app.planner, app.gym, app.focus, app.backup)
             }
         }
     }
