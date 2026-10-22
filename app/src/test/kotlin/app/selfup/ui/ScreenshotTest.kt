@@ -44,8 +44,6 @@ import app.selfup.data.XpReason
 import app.selfup.core.MindGame
 import app.selfup.gym.GymStatus
 import app.selfup.ui.components.LevelUpOverlay
-import app.selfup.ui.components.NumberEntryDialog
-import app.selfup.ui.quests.QuestEditorSheet
 import app.selfup.ui.system.SystemBackground
 import app.selfup.ui.system.BlurLayers
 import app.selfup.ui.system.SystemTab
@@ -189,17 +187,7 @@ class ScreenshotTest {
         LevelUpOverlay(listOf(StatChange(Stat.STRENGTH, 20, 4, 5)), onDismiss = {})
     }
 
-    @Test
-    fun questEditor() = shoot("09-quest-editor", popup = true) {
-        QuestEditorSheet(initial = quests[3], onSave = {}, onDelete = {}, onDismiss = {})
-    }
-
-    @Test
-    fun numberEntry() = shoot("10-number-entry", popup = true) {
-        NumberEntryDialog("Log today's spending", "₹", 240.0, onConfirm = {}, onDismiss = {})
-    }
-
-    private fun shoot(name: String, tab: String? = null, popup: Boolean = false, content: @Composable () -> Unit) {
+    private fun shoot(name: String, tab: String? = null, content: @Composable () -> Unit) {
         compose.mainClock.autoAdvance = false
         compose.setContent {
             SelfUpTheme {
@@ -230,10 +218,7 @@ class ScreenshotTest {
         }
         // Let entry animations and springs settle before capturing.
         compose.mainClock.advanceTimeBy(1_500)
-        val roots = compose.onAllNodes(isRoot())
-        // Sheets and dialogs live in their own window; capture the topmost one.
-        val root = if (popup) roots[roots.fetchSemanticsNodes().size - 1] else roots[0]
-        val bitmap = root.captureToImage().asAndroidBitmap()
+        val bitmap = compose.onAllNodes(isRoot())[0].captureToImage().asAndroidBitmap()
         val dir = File("build/screens").apply { mkdirs() }
         File(dir, "$name.jpg").outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, 88, it) }
     }

@@ -65,8 +65,13 @@ fun SystemBackground(modifier: Modifier = Modifier, accent: Color = SystemColors
             val r = mote.size.dp.toPx()
             // Fade in at the bottom and out near the top, so wrapping is never visible.
             val edge = (minOf(y, 1f - y) * 6f).coerceIn(0f, 1f)
-            drawCircle(SystemColors.BlueBright.copy(alpha = mote.alpha * edge), radius = r, center = center)
-            drawCircle(SystemColors.Blue.copy(alpha = mote.alpha * edge * 0.25f), radius = r * 4f, center = center)
+            val a = mote.alpha * edge
+            drawCircle(
+                Brush.radialGradient(listOf(SystemColors.Blue.copy(alpha = a * 0.35f), Color.Transparent), center = center, radius = r * 5f),
+                radius = r * 5f,
+                center = center,
+            )
+            drawCircle(SystemColors.BlueBright.copy(alpha = a), radius = r, center = center)
         }
     }
 }

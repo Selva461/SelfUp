@@ -19,8 +19,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import app.selfup.ui.system.Glow
 import app.selfup.ui.system.PanelShape
@@ -48,7 +50,7 @@ fun SystemWindow(
         modifier
             .fillMaxWidth()
             .systemPanel(accent = accent, glow = Glow.Full)
-            .padding(horizontal = contentPadding, vertical = contentPadding - 2.dp),
+            .padding(horizontal = contentPadding, vertical = (contentPadding - 2.dp).coerceAtLeast(0.dp)),
         verticalArrangement = Arrangement.spacedBy(spacing),
     ) {
         if (title != null) WindowTitle(title, accent, notice)
@@ -116,10 +118,15 @@ fun WindowHeading(text: String, accent: Color = SystemColors.Blue) {
 
 /** A centred line of System copy, in the bracketed voice of its notices. */
 @Composable
-fun SystemLine(text: String, modifier: Modifier = Modifier, color: Color = SystemColors.Text) {
+fun SystemLine(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = SystemColors.Text,
+    style: TextStyle = MaterialTheme.typography.titleSmall,
+) {
     Text(
         text,
-        style = MaterialTheme.typography.titleSmall.copy(shadow = glow(radius = 8f)),
+        style = style.copy(shadow = glow(color, 8f)),
         color = color,
         textAlign = TextAlign.Center,
         modifier = modifier.fillMaxWidth(),

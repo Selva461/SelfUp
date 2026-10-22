@@ -283,7 +283,7 @@ fun SystemTopBar(title: String, onBack: () -> Unit) {
                     .semantics { heading() },
             )
         }
-        Rule(fadeTo = Alignment.End, modifier = Modifier.fillMaxWidth(0.7f).padding(start = 16.dp))
+        Rule(fadeTo = Alignment.End, modifier = Modifier.padding(start = 16.dp, bottom = 12.dp).fillMaxWidth(0.7f))
     }
 }
 

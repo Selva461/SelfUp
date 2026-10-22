@@ -152,6 +152,6 @@ fun levelUpMessage(changes: List<StatChange>): String = changes.joinToString("\n
     val rankUp = newRank != Rank.forLevel(change.levelBefore)
     buildString {
         append("${change.stat.displayName} reached Lv ${change.levelAfter}")
-        if (rankUp) append(" · title: ${newRank.displayName}")
+        if (rankUp) append(" · now ${newRank.displayName}")
     }
 }

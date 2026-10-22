@@ -3,10 +3,13 @@ package app.selfup.ui.home
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -110,10 +113,11 @@ private fun DailyQuestWindow(state: TodayState, onComplete: (Quest) -> Unit, onE
                     "All goals met. Rewards granted."
                 },
                 color = if (left > 0) SystemColors.Danger else SystemColors.Blue,
+                style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 16.dp),
             )
         } else {
-            Column(Modifier.padding(bottom = 6.dp)) {}
+            Spacer(Modifier.height(6.dp))
         }
     }
 }
