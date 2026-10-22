@@ -164,7 +164,7 @@ private fun GymCard(status: GymStatus, imported: Int, onConnect: () -> Unit) {
                     GymStatus.NeedsUpdate -> "Update Gym to its latest version, then come back here."
                     is GymStatus.NeedsPermission -> "Lifts, runs and weigh-ins you log in Gym land here on their own and tick off goal tasks."
                     is GymStatus.Connected -> when {
-                        status.failed -> "Couldn't read Gym just now. SelfUp will try again by itself."
+                        status.failed -> "Couldn't read Gym just now. The System will try again by itself."
                         status.lastSync == null -> "Bringing in your training…"
                         else -> buildString {
                             append("Updated ").append(relative(status.lastSync))
