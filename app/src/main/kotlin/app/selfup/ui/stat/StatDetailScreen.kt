@@ -48,6 +48,11 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun StatDetailScreen(viewModel: StatDetailViewModel, onBack: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    StatDetailScreen(state, onBack)
+}
+
+@Composable
+fun StatDetailScreen(state: StatDetailState, onBack: () -> Unit) {
     val stat = state.progress.stat
     Scaffold(
         containerColor = Color.Transparent,
