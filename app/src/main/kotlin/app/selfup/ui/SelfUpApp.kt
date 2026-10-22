@@ -470,7 +470,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                                 screenTimeSection(
                                     screenTime,
                                     onAllowUsage = { context.startActivity(UsageReader.settingsIntent()) },
-                                    onEnableBlocker = { context.startActivity(BlockerService.settingsIntent()) },
+                                    onEnableBlocker = { BlockerService.turnOn(context) },
                                 )
                                 planSection(
                                     goalsState,

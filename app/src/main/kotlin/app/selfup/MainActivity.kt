@@ -6,6 +6,7 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import app.selfup.focus.BlockerService
 import app.selfup.ui.SelfUpApp
 import app.selfup.ui.theme.SelfUpTheme
 
@@ -27,5 +28,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         // Coming back from Gym (or from the permission prompt) shows what was just logged there.
         (application as SelfUpApplication).syncGym()
+        // Also where the app lock starts after "Display over other apps" is granted.
+        BlockerService.start(this)
     }
 }

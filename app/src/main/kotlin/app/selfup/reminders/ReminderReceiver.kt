@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.PowerManager
 import android.util.Log
 import app.selfup.SelfUpApplication
+import app.selfup.focus.BlockerService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -77,6 +78,8 @@ class RearmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action !in HANDLED) return
         val app = context.applicationContext as SelfUpApplication
+        // Boot and app updates are moments Android allows a foreground service to start.
+        BlockerService.start(app)
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {

@@ -10,7 +10,10 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- Lets a reminder light the screen and show its popup over the lock screen. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
-    <!-- Re-arm reminders after a reboot. -->
+    <!-- The app lock runs as a foreground service so it keeps watching between app switches. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Re-arm reminders (and restart the app lock) after a reboot. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Read the Gym app's training log. Gym defines these as dangerous, so Android asks the
          user once; one per Gym build, since its debug and release builds each define their own. -->
@@ -73,18 +76,15 @@
             android:launchMode="singleTask"
             android:taskAffinity="app.selfup.lock" />
 
-        <!-- Bound only by the system (BIND_ACCESSIBILITY_SERVICE), once the user turns it on. -->
+        <!-- The app lock. A foreground service reading the usage log, not an accessibility
+             service: Play Protect blocks sideloaded installs that declare one. -->
         <service
             android:name=".focus.BlockerService"
             android:exported="false"
-            android:label="@string/blocker_label"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/blocker_service" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Locks entertainment apps the user chose to limit once their daily screen-time budget is spent." />
         </service>
 
         <!-- Only our own PendingIntents reach this, so it stays unexported. -->
