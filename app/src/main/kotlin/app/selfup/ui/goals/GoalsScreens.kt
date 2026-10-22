@@ -2,7 +2,6 @@
 
 package app.selfup.ui.goals
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -16,14 +15,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -47,71 +46,72 @@ import app.selfup.core.GoalStatus
 import app.selfup.data.GoalView
 import app.selfup.data.GoalsOverview
 import app.selfup.data.TodayTask
-import app.selfup.ui.components.GlassGroup
+import app.selfup.ui.components.BackScaffold
 import app.selfup.ui.components.GroupHeader
 import app.selfup.ui.components.GroupSeparator
-import app.selfup.ui.components.SpringCheck
+import app.selfup.ui.components.MutedText
+import app.selfup.ui.components.PrimaryButton
+import app.selfup.ui.components.SheetTitle
+import app.selfup.ui.components.SystemButton
+import app.selfup.ui.components.SystemCheck
+import app.selfup.ui.components.SystemChip
+import app.selfup.ui.components.SystemChoice
+import app.selfup.ui.components.SystemDial
+import app.selfup.ui.components.SystemGroup
+import app.selfup.ui.components.SystemSheet
+import app.selfup.ui.components.SystemTextButton
+import app.selfup.ui.components.SystemWindow
+import app.selfup.ui.components.Tag
 import app.selfup.ui.components.pressScale
-import app.selfup.ui.glass.frosted
 import app.selfup.ui.records.Stepper
-import app.selfup.ui.skills.BackScaffold
-import app.selfup.ui.skills.PrimaryButton
-import app.selfup.ui.skills.ProgressRing
+import app.selfup.ui.system.Glow
+import app.selfup.ui.system.systemPanel
 import app.selfup.ui.theme.SectionLabel
+import app.selfup.ui.theme.SystemColors
 import app.selfup.ui.theme.color
-import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private val dateFormat = DateTimeFormatter.ofPattern("d MMM")
-private val Behind = Color(0xFFFFB35E)
+private val Behind = SystemColors.Gold
 
 private fun statusColor(status: GoalStatus, accent: Color): Color = when (status) {
-    GoalStatus.AHEAD, GoalStatus.REACHED -> Color(0xFF5EE29A)
+    GoalStatus.AHEAD, GoalStatus.REACHED -> SystemColors.Success
     GoalStatus.ON_TRACK -> accent
     GoalStatus.BEHIND, GoalStatus.MISSED -> Behind
-    GoalStatus.NEEDS_BASELINE -> Color.White.copy(alpha = 0.6f)
+    GoalStatus.NEEDS_BASELINE -> SystemColors.TextMuted
 }
 
 /** Today's plan on the Today tab: every active goal's tasks, ticked off by what you log. */
 fun LazyListScope.planSection(overview: GoalsOverview, onTask: (TodayTask) -> Unit, onGoals: () -> Unit) {
     item(key = "plan") {
-        Column {
-            GroupHeader("Today's plan") {
-                Text(
-                    if (overview.active.isEmpty()) "Goals" else "Goals · ${overview.active.size} of ${GoalRules.MAX_ACTIVE}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.clickable(role = Role.Button, onClick = onGoals),
+        val tasks = overview.todayTasks
+        SystemWindow(title = "Goal quests", contentPadding = 0.dp, spacing = 4.dp) {
+            Spacer(Modifier.height(12.dp))
+            when {
+                overview.active.isEmpty() -> MutedText(
+                    "Set a goal, like bench 80 kg by January, and the System plans each day's tasks.",
+                    Modifier.padding(horizontal = 18.dp),
                 )
-            }
-            Spacer(Modifier.height(6.dp))
-            val tasks = overview.todayTasks
-            GlassGroup {
-                when {
-                    overview.active.isEmpty() -> Text(
-                        "Set a goal, like bench 80 kg by January, and the plan fills this in each day.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(role = Role.Button, onClick = onGoals)
-                            .padding(18.dp),
-                    )
-                    tasks.isEmpty() -> Text(
-                        "Rest day for your goals.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(18.dp),
-                    )
-                    else -> tasks.forEachIndexed { i, task ->
+                tasks.isEmpty() -> MutedText("Rest day for your goals.", Modifier.padding(horizontal = 18.dp))
+                else -> Column {
+                    tasks.forEachIndexed { i, task ->
                         if (i > 0) GroupSeparator()
                         val goal = overview.active.first { it.goal.id == task.task.goalId }
                         TaskRow(task, goal.goal.measure.stat.color, onClick = { onTask(task) })
                     }
                 }
             }
+            SystemTextButton(
+                if (overview.active.isEmpty()) "Set a goal" else "Goals · ${overview.active.size} of ${GoalRules.MAX_ACTIVE}",
+                onClick = onGoals,
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .padding(end = 6.dp, bottom = 6.dp),
+            )
         }
     }
 }
@@ -124,11 +124,12 @@ private fun TaskRow(task: TodayTask, accent: Color, onClick: () -> Unit) {
             .fillMaxWidth()
             .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
             .pressScale(interaction, 0.985f)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .heightIn(min = 56.dp)
+            .padding(horizontal = 16.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        SpringCheck(task.done, accent)
+        SystemCheck(task.done, accent)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
@@ -139,23 +140,11 @@ private fun TaskRow(task: TodayTask, accent: Color, onClick: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                if (task.task.isTest) Pill("TEST", accent)
+                if (task.task.isTest) Tag("Test", accent)
             }
             Text(task.task.detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
         }
     }
-}
-
-@Composable
-private fun Pill(text: String, color: Color) {
-    Text(
-        text,
-        style = MaterialTheme.typography.labelSmall,
-        color = color,
-        modifier = Modifier
-            .background(color.copy(alpha = 0.14f), RoundedCornerShape(percent = 50))
-            .padding(horizontal = 8.dp, vertical = 3.dp),
-    )
 }
 
 /** Every goal: active ones with where they stand and what to adjust, then the queue. */
@@ -195,17 +184,9 @@ fun GoalsScreen(
             item(key = "add") {
                 val full = !GoalRules.canAdd(overview.active.size)
                 Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    PrimaryButton(if (full) "Add to the queue" else "Add a goal", MaterialTheme.colorScheme.primary, onAdd)
-                    PrimaryButton("Plan with AI", Color.White.copy(alpha = 0.85f), onAiPlan)
-                    Text(
-                        "Import a plan from Claude",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .clickable(role = Role.Button, onClick = onImport)
-                            .padding(10.dp),
-                    )
+                    SystemButton(if (full) "Add to the queue" else "Add a goal", onAdd)
+                    SystemButton("Plan with AI", onAiPlan, filled = false)
+                    SystemTextButton("Import a plan from Claude", onImport, Modifier.align(Alignment.CenterHorizontally))
                     if (full) {
                         Text(
                             "Three goals is the limit, so each one gets real attention. New goals wait and start when one ends.",
@@ -219,17 +200,12 @@ fun GoalsScreen(
             if (overview.queued.isNotEmpty()) {
                 item(key = "queue-h") { GroupHeader("Up next") }
                 item(key = "queue") {
-                    GlassGroup {
+                    SystemGroup {
                         overview.queued.forEachIndexed { i, view ->
                             if (i > 0) GroupSeparator(start = 16.dp)
                             Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text(view.title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                                Text(
-                                    "Remove",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.clickable(role = Role.Button) { onDrop(view) }.padding(6.dp),
-                                )
+                                SystemTextButton("Remove", onClick = { onDrop(view) })
                             }
                         }
                     }
@@ -238,7 +214,7 @@ fun GoalsScreen(
             if (overview.finished.isNotEmpty()) {
                 item(key = "done-h") { GroupHeader("Reached") }
                 item(key = "done") {
-                    GlassGroup {
+                    SystemGroup {
                         overview.finished.forEachIndexed { i, view ->
                             if (i > 0) GroupSeparator(start = 16.dp)
                             Text(view.title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
@@ -264,22 +240,29 @@ private fun GoalCard(
     val tone = statusColor(view.status, accent)
     val weeksLeft = (ChronoUnit.DAYS.between(today, view.goal.deadline) + 6) / 7
     var confirmDrop by remember(view.goal.id) { mutableStateOf(false) }
+    // The confirm state lapses, so a stray tap minutes later can't drop the goal.
+    LaunchedEffect(confirmDrop) {
+        if (confirmDrop) {
+            delay(4_000)
+            confirmDrop = false
+        }
+    }
     Column(
         Modifier
             .fillMaxWidth()
-            .frosted(tint = accent.copy(alpha = 0.06f))
+            .systemPanel(accent = accent, glow = Glow.Soft)
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Box(contentAlignment = Alignment.Center) {
-                ProgressRing(view.progress.toFloat(), accent, size = 64.dp, stroke = 7.dp)
+                SystemDial(view.progress.toFloat(), accent, size = 64.dp, stroke = 7.dp)
                 Text("${(view.progress * 100).toInt()}%", style = MaterialTheme.typography.labelLarge)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(view.title, style = MaterialTheme.typography.titleMedium)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Pill(view.status.displayName.uppercase(), tone)
+                    Tag(view.status.displayName, tone)
                     if (weeksLeft > 0) {
                         Text(
                             "$weeksLeft week${if (weeksLeft == 1L) "" else "s"} left",
@@ -333,13 +316,11 @@ private fun GoalCard(
             }
             else -> Unit
         }
-        Text(
-            if (confirmDrop) "Tap again to drop this goal" else "Drop goal",
-            style = MaterialTheme.typography.labelMedium,
-            color = if (confirmDrop) Behind else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier
-                .clickable(role = Role.Button) { if (confirmDrop) onDrop(view) else confirmDrop = true }
-                .padding(vertical = 4.dp),
+        SystemTextButton(
+            if (confirmDrop) "Tap again to drop" else "Drop goal",
+            onClick = { if (confirmDrop) onDrop(view) else confirmDrop = true },
+            color = if (confirmDrop) SystemColors.Danger else SystemColors.TextMuted,
+            modifier = Modifier.offset(x = (-12).dp),
         )
     }
 }
@@ -353,19 +334,7 @@ private fun Figure(label: String, value: String, modifier: Modifier) {
 }
 
 @Composable
-private fun Action(text: String, color: Color, onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    Text(
-        text,
-        style = MaterialTheme.typography.labelLarge,
-        color = color,
-        modifier = Modifier
-            .pressScale(interaction, 0.95f)
-            .background(color.copy(alpha = 0.14f), RoundedCornerShape(percent = 50))
-            .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-    )
-}
+private fun Action(text: String, color: Color, onClick: () -> Unit) = SystemChip(text, onClick, accent = color)
 
 /** Pick what to improve, the number, and how many weeks. Your best so far sets the start. */
 @Composable
@@ -389,12 +358,9 @@ fun AddGoalSheet(
         target = template.suggest(current)
     }
 
-    ModalBottomSheet(
+    SystemSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        scrimColor = Color.Black.copy(alpha = 0.5f),
     ) {
         Column(
             Modifier
@@ -403,7 +369,7 @@ fun AddGoalSheet(
                 .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("New goal", style = MaterialTheme.typography.headlineSmall)
+            SheetTitle("New goal")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 GoalTemplate.groups.forEach { g ->
                     Choice(g, selected = g == group) {
@@ -450,17 +416,4 @@ private const val MIN_WEEKS = 4
 private const val MAX_WEEKS = 52
 
 @Composable
-private fun Choice(text: String, selected: Boolean, onClick: () -> Unit) {
-    val interaction = remember { MutableInteractionSource() }
-    val color = MaterialTheme.colorScheme.primary
-    Text(
-        text,
-        style = MaterialTheme.typography.labelLarge,
-        color = if (selected) Color.Black else MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier
-            .pressScale(interaction, 0.95f)
-            .background(if (selected) color else Color.White.copy(alpha = 0.06f), RoundedCornerShape(percent = 50))
-            .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-    )
-}
+private fun Choice(text: String, selected: Boolean, onClick: () -> Unit) = SystemChoice(text, selected, onClick)

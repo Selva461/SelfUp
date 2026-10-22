@@ -13,22 +13,12 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberTimePickerState
@@ -39,13 +29,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import app.selfup.core.CompletionInput
 import app.selfup.core.Difficulty
 import app.selfup.core.Quest
 import app.selfup.core.Schedule
 import app.selfup.core.Stat
+import app.selfup.ui.components.FormSection
+import app.selfup.ui.components.SheetTitle
+import app.selfup.ui.components.SystemButton
+import app.selfup.ui.components.SystemChoice
+import app.selfup.ui.components.SystemDialog
+import app.selfup.ui.components.SystemSegmented
+import app.selfup.ui.components.SystemSheet
+import app.selfup.ui.components.SystemTextButton
 import app.selfup.ui.theme.color
 import java.time.DayOfWeek
 import java.time.LocalTime
@@ -114,12 +111,9 @@ fun QuestEditorSheet(
         )
     }
 
-    ModalBottomSheet(
+    SystemSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        scrimColor = Color.Black.copy(alpha = 0.5f),
     ) {
         Column(
             Modifier
@@ -129,7 +123,7 @@ fun QuestEditorSheet(
                 .padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            Text(if (initial == null) "New quest" else "Edit quest", style = MaterialTheme.typography.titleLarge)
+            SheetTitle(if (initial == null) "New quest" else "Edit quest")
 
             OutlinedTextField(
                 value = title,
@@ -139,68 +133,45 @@ fun QuestEditorSheet(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            Section("Difficulty · +${difficulty.value * 10} XP") {
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    val labels = listOf("Easy", "Medium", "Hard")
-                    Difficulty.entries.forEachIndexed { i, d ->
-                        SegmentedButton(
-                            selected = difficulty == d,
-                            onClick = { difficulty = d },
-                            shape = SegmentedButtonDefaults.itemShape(i, Difficulty.entries.size),
-                        ) { Text(labels[i]) }
-                    }
-                }
+            FormSection("Difficulty · +${difficulty.value * 10} XP") {
+                SystemSegmented(
+                    options = Difficulty.entries,
+                    selected = difficulty,
+                    label = { listOf("Easy", "Medium", "Hard")[it.ordinal] },
+                    onSelect = { difficulty = it },
+                )
             }
 
-            Section("Stats") {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FormSection("Stats") {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Stat.launchSet.forEach { stat ->
-                        FilterChip(
+                        SystemChoice(
+                            text = stat.displayName,
                             selected = stat in stats,
                             onClick = { stats = if (stat in stats) stats - stat else stats + stat },
-                            label = { Text(stat.displayName) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = stat.color.copy(alpha = 0.25f),
-                                selectedLabelColor = stat.color,
-                            ),
+                            accent = stat.color,
                         )
                     }
                 }
             }
 
-            Section("Repeats") {
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    Repeat.entries.forEachIndexed { i, r ->
-                        SegmentedButton(
-                            selected = repeat == r,
-                            onClick = { repeat = r },
-                            shape = SegmentedButtonDefaults.itemShape(i, Repeat.entries.size),
-                        ) { Text(r.label) }
-                    }
-                }
+            FormSection("Repeats") {
+                SystemSegmented(Repeat.entries, repeat, label = { it.label }, onSelect = { repeat = it })
                 if (repeat == Repeat.DAYS) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         DayOfWeek.entries.forEach { day ->
-                            FilterChip(
+                            SystemChoice(
+                                text = day.getDisplayName(TextStyle.SHORT, Locale.getDefault()),
                                 selected = day in days,
                                 onClick = { days = if (day in days) days - day else days + day },
-                                label = { Text(day.getDisplayName(TextStyle.SHORT, Locale.getDefault())) },
                             )
                         }
                     }
                 }
             }
 
-            Section("Completed by") {
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    InputKind.entries.forEachIndexed { i, k ->
-                        SegmentedButton(
-                            selected = inputKind == k,
-                            onClick = { inputKind = k },
-                            shape = SegmentedButtonDefaults.itemShape(i, InputKind.entries.size),
-                        ) { Text(k.label) }
-                    }
-                }
+            FormSection("Completed by") {
+                SystemSegmented(InputKind.entries, inputKind, label = { it.label }, onSelect = { inputKind = it })
                 if (inputKind == InputKind.NUMBER) {
                     OutlinedTextField(
                         value = unit,
@@ -211,31 +182,26 @@ fun QuestEditorSheet(
                 }
             }
 
-            Section("Reminder") {
+            FormSection("Reminder") {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(
                         checked = reminder != null,
                         onCheckedChange = { on -> reminder = if (on) reminder ?: LocalTime.of(21, 0) else null },
                     )
-                    Spacer(Modifier.width(12.dp))
+                    Spacer(Modifier.width(8.dp))
                     reminder?.let { time ->
-                        TextButton(onClick = { pickingTime = true }) {
-                            Text(time.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)))
-                        }
-                    } ?: Text("Off", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        SystemTextButton(time.format(DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)), onClick = { pickingTime = true })
+                    } ?: Text("Off", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 12.dp))
                 }
             }
 
-            Row(Modifier.fillMaxWidth()) {
+            SystemButton(if (initial == null) "Add quest" else "Save", onClick = { onSave(build()) }, enabled = canSave)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 if (initial != null) {
-                    TextButton(onClick = { onDelete(initial.id) }) {
-                        Text("Delete", color = MaterialTheme.colorScheme.error)
-                    }
+                    SystemTextButton("Delete", onClick = { onDelete(initial.id) }, color = MaterialTheme.colorScheme.error)
                 }
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = onDismiss) { Text("Cancel") }
-                Spacer(Modifier.width(8.dp))
-                Button(onClick = { onSave(build()) }, enabled = canSave) { Text("Save") }
+                SystemTextButton("Cancel", onClick = onDismiss, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
@@ -255,18 +221,12 @@ fun QuestEditorSheet(
 @Composable
 private fun TimePickerDialog(initial: LocalTime, onConfirm: (LocalTime) -> Unit, onDismiss: () -> Unit) {
     val state = rememberTimePickerState(initialHour = initial.hour, initialMinute = initial.minute)
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = { onConfirm(LocalTime.of(state.hour, state.minute)) }) { Text("Set") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        text = { TimePicker(state) },
-    )
-}
-
-@Composable
-private fun Section(label: String, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        content()
+    SystemDialog(
+        title = "Reminder",
+        onDismiss = onDismiss,
+        confirmText = "Set",
+        onConfirm = { onConfirm(LocalTime.of(state.hour, state.minute)) },
+    ) {
+        TimePicker(state, modifier = Modifier.align(Alignment.CenterHorizontally))
     }
 }

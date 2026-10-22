@@ -87,12 +87,12 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.core)
     implementation(libs.androidx.compose.ui.tooling.preview)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 
-    // Liquid Glass (refraction, depth blur, specular) and backdrop blur; Android 12+ renders
-    // the full effect, older versions fall back to tinted translucent surfaces automatically.
+    // Backdrop blur behind the System windows; Android 12+ renders the full effect, older
+    // versions fall back to tinted translucent surfaces automatically.
     implementation(libs.haze)
     implementation(libs.haze.blur)
-    implementation(libs.haze.glass)
 
     // Pulls the Gym log in the background, so records and goals stay current without opening the app.
     implementation(libs.androidx.work.runtime)
@@ -106,4 +106,7 @@ dependencies {
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.ext.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    // Renders each screen to a PNG under build/screens, so the UI can be reviewed from CI.
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
 }

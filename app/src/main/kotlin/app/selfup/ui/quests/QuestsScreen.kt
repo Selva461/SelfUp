@@ -12,10 +12,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.selfup.core.Quest
 import app.selfup.ui.TodayState
-import app.selfup.ui.components.GlassGroup
+import app.selfup.ui.components.SystemGroup
 import app.selfup.ui.components.GroupHeader
 import app.selfup.ui.components.GroupSeparator
 import app.selfup.ui.components.LargeTitle
+import app.selfup.ui.components.MutedText
 import app.selfup.ui.components.QuestRow
 
 /** Today's quests first, then every other quest so off-day and finished ones stay editable. */
@@ -39,25 +40,20 @@ fun QuestsScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item(key = "title") { LargeTitle("Quests") }
+        item(key = "title") { LargeTitle("Quests", eyebrow = "Quest log") }
         item(key = "today-header") {
             GroupHeader("Today") {
                 Text(
-                    "${state.doneCount} of ${state.quests.size} done",
-                    style = MaterialTheme.typography.labelMedium,
+                    "[${state.doneCount}/${state.quests.size}]",
+                    style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
         }
         item(key = "today") {
-            GlassGroup {
+            SystemGroup {
                 if (state.quests.isEmpty()) {
-                    Text(
-                        "Nothing due today.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(18.dp),
-                    )
+                    MutedText("Nothing due today. Add one with the + button.", Modifier.padding(18.dp))
                 }
                 state.quests.forEachIndexed { i, item ->
                     if (i > 0) GroupSeparator()
@@ -73,21 +69,16 @@ fun QuestsScreen(
         if (others.isNotEmpty()) {
             item(key = "other-header") { GroupHeader("Not today") }
             item(key = "other") {
-                GlassGroup {
+                SystemGroup {
                     others.forEachIndexed { i, quest ->
                         if (i > 0) GroupSeparator()
-                        QuestRow(quest = quest, done = false, onTap = { onEdit(quest) }, onLongPress = { onEdit(quest) })
+                        QuestRow(quest = quest, done = false, onTap = { onEdit(quest) }, onLongPress = { onEdit(quest) }, showCounter = false)
                     }
                 }
             }
         }
         item(key = "hint") {
-            Text(
-                "Tap to complete. Long-press to edit.",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 6.dp, top = 6.dp),
-            )
+            MutedText("Tap a quest to complete it. Long-press to edit. Tap one under Not today to edit it.", Modifier.padding(start = 4.dp, top = 4.dp))
         }
     }
 }
