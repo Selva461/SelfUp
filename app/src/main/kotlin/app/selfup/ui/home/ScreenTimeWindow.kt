@@ -42,9 +42,6 @@ fun ScreenTimeWindow(state: ScreenToday, onAllowUsage: () -> Unit, onEnableBlock
             Text("${state.minutes} / ${state.budget} min", style = MaterialTheme.typography.titleSmall, color = accent)
         }
         SystemBar(state.minutes.toFloat() / state.budget, accent)
-        if (state.apps.isNotEmpty()) {
-            MutedText(state.apps.take(4).joinToString("  ·  ") { (name, min) -> "$name $min min" })
-        }
         when {
             !state.blockerOn -> {
                 MutedText("Turn on the app lock to block Instagram, YouTube and games once the budget is spent.")

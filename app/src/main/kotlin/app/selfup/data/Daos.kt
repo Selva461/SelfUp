@@ -120,6 +120,33 @@ interface MetaDao {
 }
 
 @Dao
+interface TrackingDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putDay(day: DayRecordEntity)
+
+    @Query("SELECT * FROM day_record ORDER BY epochDay DESC LIMIT :limit")
+    suspend fun recentDays(limit: Int): List<DayRecordEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putAppUsage(rows: List<AppUsageDayEntity>)
+
+    @Query("SELECT * FROM app_usage_day WHERE epochDay = :epochDay ORDER BY foregroundMillis DESC")
+    suspend fun appUsageOn(epochDay: Long): List<AppUsageDayEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putPhoneDay(day: PhoneDayEntity)
+
+    @Query("SELECT * FROM phone_day WHERE epochDay = :epochDay")
+    suspend fun phoneDay(epochDay: Long): PhoneDayEntity?
+
+    @Insert
+    suspend fun insertFocusEvent(event: FocusEventEntity): Long
+
+    @Query("SELECT * FROM focus_event WHERE epochDay = :epochDay ORDER BY atMillis")
+    suspend fun focusEventsOn(epochDay: Long): List<FocusEventEntity>
+}
+
+@Dao
 interface HealthDao {
     @Query("SELECT * FROM meal_log WHERE atMillis >= :sinceMillis ORDER BY atMillis DESC")
     fun observeMeals(sinceMillis: Long): Flow<List<MealLogEntity>>

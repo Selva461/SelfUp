@@ -44,7 +44,7 @@ class SelfUpApplication : Application() {
     val goals: GoalsRepository by lazy { GoalsRepository(database, repository.clock, repository.dayBoundary) }
 
     val focus: FocusRepository by lazy {
-        FocusRepository(UsageReader(this), repository, database.metaDao(), blockerEnabled = { BlockerService.isEnabled(this) })
+        FocusRepository(UsageReader(this), repository, database.metaDao(), database.trackingDao(), blockerEnabled = { BlockerService.isEnabled(this) })
     }
 
     val backup: Backup by lazy { Backup(this, database) }

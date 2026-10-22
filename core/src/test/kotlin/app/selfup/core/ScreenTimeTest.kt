@@ -75,4 +75,30 @@ class ScreenTimeTest {
         assertFalse(ScreenTime.shouldBlock(45, now, graceUntil = at("20:03")))
         assertTrue(ScreenTime.shouldBlock(45, now, graceUntil = at("19:59")))
     }
+
+    @Test
+    fun `a day summary covers every app, first and last use, and late opens`() {
+        val events = listOf(
+            on("launcher", "07:00"), off("launcher", "07:01"),
+            on(insta, "08:00"), on(insta, "08:01"), off(insta, "08:10"),
+            on("com.whatsapp", "12:00"), off("com.whatsapp", "12:05"),
+            on(insta, "23:30"), off(insta, "23:50"),
+            on("launcher", "01:00", day.plusDays(1)), off("launcher", "01:02", day.plusDays(1)),
+        )
+        val summary = ScreenTime.summarize(
+            events,
+            boundary.startOf(day),
+            boundary.startOf(day.plusDays(1)),
+            lateFrom = ReminderPlanner.instantOn(day, ScreenTime.LATE_FROM, boundary),
+            entertainment = setOf(insta),
+        )
+        assertEquals(AppUse(30 * 60_000L, 2, entertainment = true), summary.apps[insta])
+        assertEquals(AppUse(3 * 60_000L, 2, entertainment = false), summary.apps["launcher"])
+        assertEquals(30 * 60_000L, summary.entertainmentMillis)
+        assertEquals(38 * 60_000L, summary.totalMillis)
+        assertEquals(5, summary.opens)
+        assertEquals(2, summary.lateOpens)
+        assertEquals(at("07:00"), summary.firstUse)
+        assertEquals(at("01:02", day.plusDays(1)), summary.lastUse)
+    }
 }

@@ -46,7 +46,7 @@ public object ScreenTime {
         events: List<UsageEvent>,
         start: Instant,
         end: Instant,
-        packages: Set<String> = scrollApps.keys,
+        packages: Set<String>? = scrollApps.keys,
     ): Map<String, Long> {
         val totals = mutableMapOf<String, Long>()
         val openSince = mutableMapOf<String, Instant>()
@@ -56,7 +56,7 @@ public object ScreenTime {
             if (ms > 0) totals[pkg] = (totals[pkg] ?: 0) + ms
         }
         events.asSequence()
-            .filter { it.pkg in packages }
+            .filter { packages == null || it.pkg in packages }
             .filter { !it.at.isBefore(start) && it.at.isBefore(end) }
             .sortedBy { it.at }
             .forEach { event ->
@@ -72,6 +72,40 @@ public object ScreenTime {
         openSince.forEach { (pkg, from) -> add(pkg, from, end) }
         return totals
     }
+
+    /**
+     * The full picture of one quest day for the detailed log: time and opens for every app
+     * (not only entertainment), first and last use, and how many opens came after [lateFrom].
+     */
+    public fun summarize(events: List<UsageEvent>, start: Instant, end: Instant, lateFrom: Instant, entertainment: Set<String>): UsageDay {
+        val inWindow = events.filter { !it.at.isBefore(start) && it.at.isBefore(end) }.sortedBy { it.at }
+        val millis = foregroundMillis(inWindow, start, end, packages = null)
+        val opens = mutableMapOf<String, Int>()
+        val open = mutableSetOf<String>()
+        var late = 0
+        inWindow.forEach { event ->
+            when (event.kind) {
+                UsageKind.RESUMED -> if (open.add(event.pkg)) {
+                    opens[event.pkg] = (opens[event.pkg] ?: 0) + 1
+                    if (!event.at.isBefore(lateFrom)) late++
+                }
+                UsageKind.PAUSED -> open.remove(event.pkg)
+            }
+        }
+        val apps = (millis.keys + opens.keys).associateWith { pkg ->
+            AppUse(millis[pkg] ?: 0, opens[pkg] ?: 0, pkg in entertainment)
+        }
+        val resumes = inWindow.filter { it.kind == UsageKind.RESUMED }
+        return UsageDay(
+            apps = apps,
+            firstUse = resumes.firstOrNull()?.at,
+            lastUse = inWindow.lastOrNull()?.at,
+            lateOpens = late,
+        )
+    }
+
+    /** Opens after this time count as late-night use. */
+    public val LATE_FROM: LocalTime = LocalTime.of(23, 0)
 
     public fun minutes(millis: Map<String, Long>): Int = (millis.values.sum() / 60_000).toInt()
 
@@ -109,4 +143,17 @@ public object ScreenTime {
     }
 
     private val CUTOFF = Regex("""(?i)\b(phone off|phone down|in bed|no phone|screen off|screens off)\b.*?\bby\s+(\d{1,2})[:.](\d{2})""")
+}
+
+public data class AppUse(val foregroundMillis: Long, val opens: Int, val entertainment: Boolean)
+
+public data class UsageDay(
+    val apps: Map<String, AppUse>,
+    val firstUse: Instant?,
+    val lastUse: Instant?,
+    val lateOpens: Int,
+) {
+    val totalMillis: Long get() = apps.values.sumOf { it.foregroundMillis }
+    val entertainmentMillis: Long get() = apps.values.filter { it.entertainment }.sumOf { it.foregroundMillis }
+    val opens: Int get() = apps.values.sumOf { it.opens }
 }

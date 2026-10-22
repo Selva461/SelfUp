@@ -6,7 +6,13 @@ import app.selfup.core.ScreenTime
 import app.selfup.core.Stat
 import app.selfup.data.CompletionResult
 import app.selfup.data.LifeRepository
+import app.selfup.core.ReminderPlanner
+import app.selfup.data.AppUsageDayEntity
+import app.selfup.data.FocusEventEntity
+import app.selfup.data.FocusEventKind
 import app.selfup.data.MetaDao
+import app.selfup.data.PhoneDayEntity
+import app.selfup.data.TrackingDao
 import app.selfup.data.MetaEntity
 import app.selfup.data.XpReason
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +55,7 @@ class FocusRepository(
     private val source: UsageSource,
     private val life: LifeRepository,
     private val meta: MetaDao,
+    private val tracking: TrackingDao,
     private val clock: Clock = life.clock,
     private val boundary: DayBoundary = life.dayBoundary,
     /** Whether the blocker's accessibility service is switched on. */
@@ -76,14 +83,39 @@ class FocusRepository(
         val events = source.events(start, end)
         if (events.isEmpty()) return@withContext FocusReport()
 
+        val day = yesterday.toEpochDay()
+        val summary = ScreenTime.summarize(
+            events,
+            start,
+            end,
+            lateFrom = ReminderPlanner.instantOn(yesterday, ScreenTime.LATE_FROM, boundary),
+            entertainment = apps(),
+        )
+        tracking.putAppUsage(summary.apps.map { (pkg, use) -> AppUsageDayEntity(day, pkg, use.foregroundMillis, use.opens, use.entertainment) })
+        tracking.putPhoneDay(
+            PhoneDayEntity(
+                epochDay = day,
+                firstUseMillis = summary.firstUse?.toEpochMilli(),
+                lastUseMillis = summary.lastUse?.toEpochMilli(),
+                totalMillis = summary.totalMillis,
+                entertainmentMillis = summary.entertainmentMillis,
+                opens = summary.opens,
+                lateOpens = summary.lateOpens,
+            ),
+        )
+        val used = (summary.entertainmentMillis / 60_000).toInt()
+
         val verified = life.dailiesDueOn(yesterday).filter { quest ->
             val cutoff = ScreenTime.cutoff(quest.title) ?: return@filter false
             ScreenTime.stayedOff(events, yesterday, cutoff, boundary) &&
                 life.completeVerified(quest.id, yesterday) is CompletionResult.Completed
         }
-        val used = ScreenTime.minutes(ScreenTime.foregroundMillis(events, start, end, apps()))
+        verified.forEach { log(FocusEventKind.VERIFIED, day, questId = it.id, minutesUsed = used) }
         val bonus = if (used < ScreenTime.DAILY_BUDGET_MINUTES) ScreenTime.UNDER_BUDGET_XP else 0
-        if (bonus > 0) life.grantBonus(Stat.LIFE, bonus, yesterday, XpReason.FOCUS)
+        if (bonus > 0) {
+            life.grantBonus(Stat.LIFE, bonus, yesterday, XpReason.FOCUS)
+            log(FocusEventKind.BONUS, day, minutesUsed = used)
+        }
         FocusReport(verified, bonus)
     }
 
@@ -94,11 +126,13 @@ class FocusRepository(
         return ScreenTime.foregroundMillis(source.events(start, now), start, now, apps())
     }
 
-    /** Whether opening [pkg] right now should hit the lock screen. */
+    /** Whether opening [pkg] right now should hit the lock screen. Each lock is logged. */
     suspend fun shouldBlock(pkg: String): Boolean {
         if (pkg !in apps() || !source.hasAccess()) return false
         val used = withContext(Dispatchers.IO) { ScreenTime.minutes(usedToday()) }
-        return ScreenTime.shouldBlock(used, clock.instant(), graceUntil())
+        val block = ScreenTime.shouldBlock(used, clock.instant(), graceUntil())
+        if (block) log(FocusEventKind.LOCKED, today().toEpochDay(), pkg = pkg, minutesUsed = used)
+        return block
     }
 
     /** True when today's one grace unlock is still available. */
@@ -109,6 +143,7 @@ class FocusRepository(
         if (!graceAvailable()) return false
         val until = clock.instant().plus(Duration.ofMinutes(ScreenTime.GRACE_MINUTES.toLong()))
         meta.put(MetaEntity(GRACE_KEY, "${today().toEpochDay()}:${until.toEpochMilli()}"))
+        log(FocusEventKind.GRACE, today().toEpochDay())
         return true
     }
 
@@ -132,6 +167,10 @@ class FocusRepository(
                 .map { (pkg, millis) -> (names[pkg] ?: pkg.substringAfterLast('.')) to (millis / 60_000).toInt() }
                 .filter { it.second > 0 },
         )
+    }
+
+    private suspend fun log(kind: String, epochDay: Long, pkg: String? = null, questId: Long? = null, minutesUsed: Int? = null) {
+        tracking.insertFocusEvent(FocusEventEntity(atMillis = clock.millis(), epochDay = epochDay, kind = kind, pkg = pkg, questId = questId, minutesUsed = minutesUsed))
     }
 
     private fun today(): LocalDate = boundary.questDay(clock.instant())

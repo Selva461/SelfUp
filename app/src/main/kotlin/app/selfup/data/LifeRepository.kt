@@ -76,6 +76,7 @@ class LifeRepository(
     private val completions = db.completionDao()
     private val xp = db.xpDao()
     private val meta = db.metaDao()
+    private val tracking = db.trackingDao()
 
     fun today(): LocalDate = dayBoundary.questDay(clock.instant())
 
@@ -332,8 +333,19 @@ class LifeRepository(
             val before = streak.current
             val (next, outcome) = Streaks.close(streak, due, missed.size)
             streak = next
+            val record = DayRecordEntity(
+                epochDay = day.toEpochDay(),
+                due = due,
+                missed = missed.size,
+                outcome = outcome.name,
+                streakAfter = streak.current,
+                shieldsAfter = streak.shields,
+                xpLost = 0,
+                closedAtMillis = now,
+            )
             when (outcome) {
                 DayOutcome.SHIELDED -> {
+                    tracking.putDay(record)
                     shieldsUsed++
                     day = day.plusDays(1)
                     continue
@@ -356,6 +368,7 @@ class LifeRepository(
                 },
             )
             xpLost -= penalties.sumOf { it.delta }
+            tracking.putDay(record.copy(xpLost = -penalties.sumOf { it.delta }))
             if (day == yesterday) missedYesterday += missed
             day = day.plusDays(1)
         }

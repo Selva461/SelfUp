@@ -50,7 +50,7 @@ class FocusRepositoryTest {
             .allowMainThreadQueries()
             .build()
         life = LifeRepository(db, clock, DayBoundary(LocalTime.of(4, 0), zone))
-        focus = FocusRepository(source, life, db.metaDao())
+        focus = FocusRepository(source, life, db.metaDao(), db.trackingDao())
     }
 
     @After
@@ -78,6 +78,14 @@ class FocusRepositoryTest {
         assertTrue(life.closeFinishedDays().missed.isEmpty())
         assertEquals(30, life.observeStats().first().single { it.stat == Stat.LIFE }.totalXp.toInt())
         assertTrue(focus.settle().isEmpty)
+
+        val day = monday.toEpochDay()
+        val tracking = db.trackingDao()
+        assertEquals(12 * 60_000L, tracking.phoneDay(day)?.entertainmentMillis)
+        assertEquals(2, tracking.phoneDay(day)?.opens)
+        assertEquals(setOf(insta, "launcher"), tracking.appUsageOn(day).map { it.pkg }.toSet())
+        assertEquals(listOf("verified", "bonus"), tracking.focusEventsOn(day).map { it.kind })
+        assertEquals("CLEAR", tracking.recentDays(1).single().outcome)
     }
 
     @Test
@@ -117,6 +125,7 @@ class FocusRepositoryTest {
 
         clock.now = at(monday, "20:06")
         assertTrue(focus.shouldBlock(insta))
+        assertEquals(listOf("locked", "grace", "locked"), db.trackingDao().focusEventsOn(monday.toEpochDay()).map { it.kind })
     }
 }
 
