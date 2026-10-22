@@ -97,7 +97,7 @@ private fun LockScreen(app: String, focus: FocusRepository, onLeave: () -> Unit,
                     "Entertainment budget spent: ${minutes ?: "–"} of ${ScreenTime.DAILY_BUDGET_MINUTES} minutes today.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                MutedText("It unlocks at the next daily reset. Stay under budget tomorrow for +${ScreenTime.UNDER_BUDGET_XP} Life XP.")
+                MutedText("It unlocks at the next daily reset. Keep tomorrow to ${ScreenTime.FREE_MINUTES} minutes for the full +${ScreenTime.UNDER_BUDGET_XP} Life XP.")
                 SystemButton("Leave", onClick = onLeave, accent = SystemColors.Danger)
                 if (graceLeft) {
                     SystemButton(

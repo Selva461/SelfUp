@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import app.selfup.core.DayBoundary
 import app.selfup.core.MindGame
 import app.selfup.core.MindRules
+import app.selfup.core.MindRun
 import app.selfup.core.Stat
 import app.selfup.core.StatChange
 import app.selfup.core.XpRules
@@ -26,6 +27,8 @@ data class MindSummary(
 data class MindResult(
     val game: MindGame,
     val score: Double,
+    /** How the run measured up against its target, 0 to 1. */
+    val performance: Double,
     /** The best before this game; null on the first play. */
     val previousBest: Double?,
     val xp: Int,
@@ -54,26 +57,41 @@ class MindRepository(
         }
     }
 
-    suspend fun record(game: MindGame, score: Double): MindResult = db.withTransaction {
+    suspend fun record(game: MindGame, run: MindRun): MindResult = db.withTransaction {
         val now = clock.instant()
         val day = dayBoundary.questDay(now).toEpochDay()
         val history = mind.forGame(game.key)
         val scores = history.map { it.score }
-        val earned = MindRules.xpFor(game, score, scores, playedToday = history.any { it.epochDay == day })
-        mind.insert(MindScoreEntity(game = game.key, score = score, epochDay = day, atMillis = now.toEpochMilli(), xpAwarded = earned))
-        val changes = if (earned > 0) grant(earned, day, now.toEpochMilli()) else emptyList()
-        val previousBest = scores.reduceOrNull { a, b -> if (game.isBetter(b, a)) b else a }
-        MindResult(game, score, previousBest, earned, changes)
+        val performance = MindRules.performance(game, run, scores)
+        val earned = MindRules.xpFor(game, run, scores, playedToday = history.any { it.epochDay == day })
+        val changes = if (earned != 0) grant(earned, day, now.toEpochMilli()) else emptyList()
+        val granted = changes.sumOf { it.delta }
+        mind.insert(
+            MindScoreEntity(
+                game = game.key,
+                score = run.score,
+                epochDay = day,
+                atMillis = now.toEpochMilli(),
+                xpAwarded = granted,
+                correct = run.correct,
+                attempts = run.attempts,
+                performance = performance,
+            ),
+        )
+        MindResult(game, run.score, performance, MindRules.best(game, scores), granted, changes)
     }
 
+    /** Grants [delta]; a loss is clamped so it never costs a level. */
     private suspend fun grant(delta: Int, epochDay: Long, atMillis: Long): List<StatChange> {
         val totals = xp.totals().associate { Stat.fromKey(it.stat) to it.total }
-        val changes = XpRules.apply(totals, mapOf(STAT to delta))
+        val settled = XpRules.settle(totals[STAT] ?: 0, delta)
+        if (settled == 0) return emptyList()
+        val changes = XpRules.apply(totals, mapOf(STAT to settled))
         xp.insertAll(
             listOf(
                 XpEventEntity(
                     stat = STAT.key,
-                    delta = delta,
+                    delta = settled,
                     reason = XpReason.MIND,
                     questId = null,
                     completionId = null,

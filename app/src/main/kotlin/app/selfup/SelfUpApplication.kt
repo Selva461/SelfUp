@@ -10,6 +10,7 @@ import app.selfup.data.LifeRepository
 import app.selfup.data.MindRepository
 import app.selfup.data.RecordsRepository
 import app.selfup.data.SkillsRepository
+import app.selfup.data.WorkRepository
 import app.selfup.data.ReminderInput
 import app.selfup.data.SelfUpDatabase
 import app.selfup.gym.GymBridge
@@ -47,6 +48,8 @@ class SelfUpApplication : Application() {
         FocusRepository(UsageReader(this), repository, database.metaDao(), database.trackingDao(), blockerEnabled = { BlockerService.isEnabled(this) })
     }
 
+    val work: WorkRepository by lazy { WorkRepository(database, repository.clock, repository.dayBoundary) }
+
     val backup: Backup by lazy { Backup(this, database) }
 
     val ai: AiSettings by lazy { AiSettings(this) }
@@ -54,7 +57,15 @@ class SelfUpApplication : Application() {
     val planner: GroqPlanner by lazy { GroqPlanner(ai) }
 
     val gym: GymSync by lazy {
-        GymSync(GymBridge(this), records, database.metaDao(), repository.clock, zone = { repository.dayBoundary.zone })
+        GymSync(
+            GymBridge(this),
+            records,
+            database.metaDao(),
+            repository.clock,
+            zone = { repository.dayBoundary.zone },
+            life = repository,
+            tracking = database.trackingDao(),
+        )
     }
 
     private val reminders by lazy { ReminderScheduler(this) }

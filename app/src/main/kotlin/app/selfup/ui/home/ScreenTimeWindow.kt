@@ -30,9 +30,9 @@ fun ScreenTimeWindow(state: ScreenToday, onAllowUsage: () -> Unit, onEnableBlock
         if (!state.hasAccess) {
             SystemLine("[Screen time is not linked]")
             MutedText(
-                "Give the System usage access and it checks \"Phone off by 23:00\" by itself, " +
-                    "pays +${ScreenTime.UNDER_BUDGET_XP} Life XP for a day under ${ScreenTime.DAILY_BUDGET_MINUTES} minutes of " +
-                    "entertainment, and can lock those apps once the budget is spent.",
+                "The \"Phone off\" and bedtime quests are checked only from usage access; until it's on they " +
+                    "can't complete. With it, a day of ${ScreenTime.FREE_MINUTES} minutes of entertainment or less pays " +
+                    "+${ScreenTime.UNDER_BUDGET_XP} Life XP, less as you near ${ScreenTime.DAILY_BUDGET_MINUTES}, and those apps lock once it's spent.",
             )
             SystemButton("Allow usage access", onClick = onAllowUsage)
             return@SystemWindow

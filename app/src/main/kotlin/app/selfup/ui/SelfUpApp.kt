@@ -2,6 +2,7 @@ package app.selfup.ui
 
 import app.selfup.reminders.PopupActivity
 import app.selfup.data.Backup
+import app.selfup.data.CompletionResult
 import app.selfup.focus.BlockerService
 import app.selfup.focus.FocusRepository
 import app.selfup.focus.UsageReader
@@ -81,6 +82,7 @@ import app.selfup.core.Mastery
 import app.selfup.core.MindGame
 import app.selfup.core.PersonalBest
 import app.selfup.core.PlanAction
+import app.selfup.core.Performance
 import app.selfup.core.Quest
 import app.selfup.core.RecordKind
 import app.selfup.core.RecordMath
@@ -96,6 +98,7 @@ import app.selfup.data.MindRepository
 import app.selfup.data.RecordsRepository
 import app.selfup.data.SkillResult
 import app.selfup.data.SkillsRepository
+import app.selfup.data.WorkRepository
 import app.selfup.gym.GymBridge
 import app.selfup.gym.GymStatus
 import app.selfup.gym.GymSync
@@ -182,8 +185,8 @@ private sealed interface Editing {
 }
 
 @Composable
-fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner, gym: GymSync, focus: FocusRepository, backup: Backup) {
-    val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository, focus) } })
+fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner, gym: GymSync, focus: FocusRepository, backup: Backup, work: WorkRepository) {
+    val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository, focus, health) } })
     val screenTime by remember(focus) { focus.observeToday() }.collectAsStateWithLifecycle(null)
     val state by game.state.collectAsStateWithLifecycle()
     val allQuests by game.allQuests.collectAsStateWithLifecycle()
@@ -282,8 +285,8 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
         mindVm.events.collect { event ->
             when (event) {
                 is MindEvent.LeveledUp -> levelUp = event.changes
-                is MindEvent.Result -> if (event.result.xp > 0) {
-                    launch { snackbar.showSnackbar("+${event.result.xp} XP · ${MindRepository.STAT.displayName}", duration = SnackbarDuration.Short) }
+                is MindEvent.Result -> if (event.result.xp != 0) {
+                    launch { snackbar.showSnackbar("${signedXp(event.result.xp)} XP · ${MindRepository.STAT.displayName}", duration = SnackbarDuration.Short) }
                 }
             }
         }
@@ -299,9 +302,9 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         masteryUp = result
                     }
-                    if (result.xp > 0) {
+                    if (result.xp != 0) {
                         val stat = Packs.packOf(result.conceptId)?.stat
-                        launch { snackbar.showSnackbar("+${result.xp} XP" + (stat?.let { " · ${it.displayName}" } ?: ""), duration = SnackbarDuration.Short) }
+                        launch { snackbar.showSnackbar("${signedXp(result.xp)} XP" + (stat?.let { " · ${it.displayName}" } ?: ""), duration = SnackbarDuration.Short) }
                     }
                 }
             }
@@ -348,6 +351,26 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                     else -> null
                 }
                 if (text != null) snackbar.showSnackbar(text, duration = SnackbarDuration.Short)
+            }
+        }
+    }
+
+    LaunchedEffect(gym) {
+        gym.checks.collect { check ->
+            val changes = when (val r = check.result) {
+                is CompletionResult.Completed -> r.changes
+                is CompletionResult.Rescored -> r.changes
+                else -> emptyList()
+            }
+            val leveled = changes.filter { it.leveledUp }
+            if (leveled.isNotEmpty()) levelUp = leveled
+            val v = check.verdict
+            val xp = changes.joinToString(" · ") { "${signedXp(it.delta)} XP ${it.stat.displayName}" }.ifEmpty { "no XP change" }
+            launch {
+                snackbar.showSnackbar(
+                    "Gym session ${Performance.label(v.performance).lowercase()} (${percent(v.performance)}), ${v.session.sets} sets: $xp",
+                    duration = SnackbarDuration.Long,
+                )
             }
         }
     }
@@ -403,16 +426,31 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                 is GameEvent.FocusSettled -> launch {
                     val report = event.report
                     val lines = buildList {
-                        report.verified.forEach { add("Verified: ${it.title}.") }
-                        if (report.bonusXp > 0) add("Under the screen-time budget yesterday: +${report.bonusXp} XP Life.")
+                        report.verified.forEach { (quest, p) -> add("${quest.title}: ${Performance.label(p).lowercase()} (${percent(p)}).") }
+                        report.failed.forEach { add("${it.title}: failed, phone used after the cutoff.") }
+                        if (report.bonusXp != 0) add("Screen time yesterday ${report.usedMinutes} min: ${signedXp(report.bonusXp)} XP Life.")
                     }
-                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                    haptics.performHapticFeedback(if (report.failed.isEmpty() && report.bonusXp >= 0) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
                     snackbar.showSnackbar(lines.joinToString(" "), duration = SnackbarDuration.Long)
+                }
+                is GameEvent.NutritionSettled -> launch {
+                    val report = event.report
+                    val lines = buildList {
+                        report.verified.forEach { (quest, p) -> add("${quest.title}: ${Performance.label(p).lowercase()} (${percent(p)}).") }
+                        report.failed.forEach { add("${it.title}: not met by what you logged.") }
+                    }
+                    haptics.performHapticFeedback(if (report.failed.isEmpty()) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
+                    snackbar.showSnackbar(lines.joinToString(" "), duration = SnackbarDuration.Long)
+                }
+                is GameEvent.Automatic -> launch {
+                    snackbar.showSnackbar("The System checks this from the ${event.check.source.lowercase()}. No tap needed.", duration = SnackbarDuration.Short)
                 }
                 is GameEvent.Completed -> launch {
                     haptics.performHapticFeedback(HapticFeedbackType.Confirm)
-                    val xp = event.changes.joinToString(" · ") { "+${it.delta} XP ${it.stat.displayName}" }
-                    val result = snackbar.showSnackbar(xp, actionLabel = "Undo", duration = SnackbarDuration.Short)
+                    val xp = event.changes.joinToString(" · ") { "${signedXp(it.delta)} XP ${it.stat.displayName}" }
+                        .ifEmpty { "No XP" }
+                    val text = event.performance?.let { "${Performance.label(it)} (${percent(it)}): $xp" } ?: xp
+                    val result = snackbar.showSnackbar(text, actionLabel = "Undo", duration = SnackbarDuration.Short)
                     if (result == SnackbarResult.ActionPerformed) game.undo(event.quest.id)
                 }
             }
@@ -599,7 +637,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                         )
                     }
                     composable(Routes.LOG) {
-                        val log: LogViewModel = viewModel(factory = viewModelFactory { initializer { LogViewModel(health) } })
+                        val log: LogViewModel = viewModel(factory = viewModelFactory { initializer { LogViewModel(health, work, planner) } })
                         val saveBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
                             if (uri != null) {
                                 scope.launch {
@@ -624,14 +662,26 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                             }
                         }
                         val logState by log.state.collectAsStateWithLifecycle()
+                        val judging by log.judging.collectAsStateWithLifecycle()
                         LaunchedEffect(log) {
                             log.events.collect { event ->
                                 launch {
-                                    val text = when (event) {
-                                        is LogEvent.MealLogged -> "Logged ${event.food}"
+                                    when (event) {
+                                        is LogEvent.MealLogged -> {
+                                            val result = snackbar.showSnackbar(
+                                                "Logged ${event.food} · ${event.quality.displayName.lowercase()}",
+                                                actionLabel = "Undo",
+                                                duration = SnackbarDuration.Short,
+                                            )
+                                            if (result == SnackbarResult.ActionPerformed) log.undo(event)
+                                        }
+                                        is LogEvent.WorkAdded -> {
+                                            val leveled = event.changes.filter { it.leveledUp }
+                                            if (leveled.isNotEmpty()) levelUp = leveled
+                                            snackbar.showSnackbar("${event.title}: ${signedXp(event.xp)} XP", duration = SnackbarDuration.Long)
+                                        }
+                                        is LogEvent.WorkRejected -> snackbar.showSnackbar(event.message, duration = SnackbarDuration.Long)
                                     }
-                                    val result = snackbar.showSnackbar(text, actionLabel = "Undo", duration = SnackbarDuration.Short)
-                                    if (result == SnackbarResult.ActionPerformed) log.undo(event)
                                 }
                             }
                         }
@@ -640,6 +690,11 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                             boundary = health.dayBoundary,
                             contentPadding = padding,
                             onMeal = log::logMeal,
+                            onMealQuality = log::setQuality,
+                            canJudge = ai.groqKey != null,
+                            judging = judging,
+                            onWorkCode = log::importWork,
+                            onJudge = log::judgeWork,
                             onBackup = { saveBackup.launch("selfup-${health.today()}.db") },
                             onRestore = { openBackup.launch(arrayOf("*/*")) },
                             onShare = {
@@ -817,3 +872,7 @@ private fun androidx.navigation.NavController.switchTab(route: String) {
 }
 
 private const val ASKED_POPUPS = "asked_popups"
+
+private fun signedXp(xp: Int): String = if (xp >= 0) "+$xp" else "−${-xp}"
+
+private fun percent(performance: Double): String = "${(performance * 100).toInt()}%"

@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.selfup.core.DigitSpan
 import app.selfup.core.GridRecall
+import app.selfup.core.MindRun
 import app.selfup.core.NBack
 import app.selfup.core.Reaction
 import app.selfup.core.SpeedMath
@@ -131,7 +132,7 @@ private fun MissDots(misses: Int, max: Int) {
 private enum class SpanPhase { Show, Input, Feedback }
 
 @Composable
-fun DigitSpanGame(accent: Color, onDone: (Double) -> Unit) {
+fun DigitSpanGame(accent: Color, onDone: (MindRun) -> Unit) {
     val done by rememberUpdatedState(onDone)
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -142,6 +143,8 @@ fun DigitSpanGame(accent: Color, onDone: (Double) -> Unit) {
     var phase by remember { mutableStateOf(SpanPhase.Show) }
     var lastRight by remember { mutableStateOf(false) }
     var misses by remember { mutableIntStateOf(0) }
+    var rounds by remember { mutableIntStateOf(0) }
+    var right by remember { mutableIntStateOf(0) }
     val typed = remember { mutableStateListOf<Int>() }
 
     LaunchedEffect(round) {
@@ -161,11 +164,13 @@ fun DigitSpanGame(accent: Color, onDone: (Double) -> Unit) {
     fun submit() {
         lastRight = run.answer(digits, typed.toList())
         misses = if (lastRight) 0 else misses + 1
+        rounds++
+        if (lastRight) right++
         haptics.performHapticFeedback(if (lastRight) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
         phase = SpanPhase.Feedback
         scope.launch {
             delay(1_100)
-            if (run.isOver) done(run.best.toDouble()) else round++
+            if (run.isOver) done(MindRun(run.best.toDouble(), right, rounds)) else round++
         }
     }
 
@@ -235,11 +240,13 @@ private sealed interface BackPhase {
 }
 
 @Composable
-fun NBackGame(startN: Int, accent: Color, onDone: (Double) -> Unit) {
+fun NBackGame(startN: Int, accent: Color, onDone: (MindRun) -> Unit) {
     val done by rememberUpdatedState(onDone)
     var phase by remember { mutableStateOf<BackPhase>(BackPhase.Intro(startN.coerceAtLeast(1), 0)) }
     var blocks by remember { mutableIntStateOf(0) }
     var bestPassed by remember { mutableIntStateOf(0) }
+    var trialsRight by remember { mutableIntStateOf(0) }
+    var trials by remember { mutableIntStateOf(0) }
 
     when (val p = phase) {
         is BackPhase.Intro -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -258,7 +265,10 @@ fun NBackGame(startN: Int, accent: Color, onDone: (Double) -> Unit) {
             }
             PrimaryButton("Start block", accent, { phase = BackPhase.Trials(p.n, p.block) })
         }
-        is BackPhase.Trials -> NBackBlock(p.n, accent) { accuracy ->
+        is BackPhase.Trials -> NBackBlock(p.n, accent) { right, total ->
+            val accuracy = right.toDouble() / total
+            trialsRight += right
+            trials += total
             if (accuracy >= NBack.PASS) bestPassed = maxOf(bestPassed, p.n)
             blocks++
             phase = BackPhase.Scored(p.n, accuracy)
@@ -269,7 +279,7 @@ fun NBackGame(startN: Int, accent: Color, onDone: (Double) -> Unit) {
             val next = NBack.nextN(p.n, p.accuracy)
             LaunchedEffect(p) {
                 delay(1_800)
-                if (last) done(bestPassed.toDouble()) else phase = BackPhase.Intro(next, blocks)
+                if (last) done(MindRun(bestPassed.toDouble(), trialsRight, trials)) else phase = BackPhase.Intro(next, blocks)
             }
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -291,7 +301,7 @@ fun NBackGame(startN: Int, accent: Color, onDone: (Double) -> Unit) {
 }
 
 @Composable
-private fun NBackBlock(n: Int, accent: Color, onFinished: (Double) -> Unit) {
+private fun NBackBlock(n: Int, accent: Color, onFinished: (right: Int, total: Int) -> Unit) {
     val finished by rememberUpdatedState(onFinished)
     val haptics = LocalHapticFeedback.current
     val seq = remember(n) { NBack.block(n) }
@@ -308,7 +318,7 @@ private fun NBackBlock(n: Int, accent: Color, onFinished: (Double) -> Unit) {
             visible = false
             delay(2_000)
         }
-        finished(NBack.accuracy(seq, n, pressed.toList()))
+        finished(NBack.right(seq, n, pressed.toList()), seq.size - n)
     }
 
     val current = trial.coerceAtLeast(0)
@@ -345,11 +355,12 @@ private fun NBackBlock(n: Int, accent: Color, onFinished: (Double) -> Unit) {
 // ─── Speed math ───────────────────────────────────────────────────────────────
 
 @Composable
-fun SpeedMathGame(accent: Color, onDone: (Double) -> Unit) {
+fun SpeedMathGame(accent: Color, onDone: (MindRun) -> Unit) {
     val done by rememberUpdatedState(onDone)
     val haptics = LocalHapticFeedback.current
     var streak by remember { mutableIntStateOf(0) }
     var correct by remember { mutableIntStateOf(0) }
+    var wrong by remember { mutableIntStateOf(0) }
     var problem by remember { mutableStateOf(SpeedMath.problem(0)) }
     var typed by remember { mutableStateOf("") }
     var flash by remember { mutableStateOf<Color?>(null) }
@@ -366,7 +377,7 @@ fun SpeedMathGame(accent: Color, onDone: (Double) -> Unit) {
         }
         running = false
         delay(500)
-        done(correct.toDouble())
+        done(MindRun(correct.toDouble(), correct, correct + wrong))
     }
     LaunchedEffect(flash) {
         if (flash != null) {
@@ -390,6 +401,7 @@ fun SpeedMathGame(accent: Color, onDone: (Double) -> Unit) {
             }
             next.length >= target.length -> {
                 streak = 0
+                wrong++
                 haptics.performHapticFeedback(HapticFeedbackType.Reject)
                 flash = Wrong
                 problem = SpeedMath.problem(0)
@@ -441,13 +453,15 @@ fun SpeedMathGame(accent: Color, onDone: (Double) -> Unit) {
 private enum class GridPhase { Show, Tap, Feedback }
 
 @Composable
-fun GridRecallGame(accent: Color, onDone: (Double) -> Unit) {
+fun GridRecallGame(accent: Color, onDone: (MindRun) -> Unit) {
     val done by rememberUpdatedState(onDone)
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     var cells by remember { mutableIntStateOf(GridRecall.START_CELLS) }
     var best by remember { mutableIntStateOf(0) }
     var misses by remember { mutableIntStateOf(0) }
+    var rounds by remember { mutableIntStateOf(0) }
+    var right by remember { mutableIntStateOf(0) }
     var round by remember { mutableIntStateOf(0) }
     var pattern by remember { mutableStateOf(emptySet<Int>()) }
     var tapped by remember { mutableStateOf(emptySet<Int>()) }
@@ -465,6 +479,8 @@ fun GridRecallGame(accent: Color, onDone: (Double) -> Unit) {
 
     fun finishRound(success: Boolean) {
         phase = GridPhase.Feedback
+        rounds++
+        if (success) right++
         if (success) {
             best = maxOf(best, cells)
             misses = 0
@@ -475,7 +491,7 @@ fun GridRecallGame(accent: Color, onDone: (Double) -> Unit) {
         scope.launch {
             delay(1_000)
             if (misses >= GridRecall.MAX_MISSES) {
-                done(best.toDouble())
+                done(MindRun(best.toDouble(), right, rounds))
             } else {
                 if (success) cells++
                 round++
@@ -552,10 +568,11 @@ private sealed interface ReactPhase {
 }
 
 @Composable
-fun ReactionGame(accent: Color, onDone: (Double) -> Unit) {
+fun ReactionGame(accent: Color, onDone: (MindRun) -> Unit) {
     val done by rememberUpdatedState(onDone)
     val haptics = LocalHapticFeedback.current
     val times = remember { mutableStateListOf<Long>() }
+    var falseStarts by remember { mutableIntStateOf(0) }
     var attempt by remember { mutableIntStateOf(0) }
     var phase by remember { mutableStateOf<ReactPhase>(ReactPhase.Wait) }
 
@@ -571,7 +588,11 @@ fun ReactionGame(accent: Color, onDone: (Double) -> Unit) {
         when (phase) {
             is ReactPhase.Shown -> {
                 delay(900)
-                if (times.size >= Reaction.TAPS) done(Reaction.median(times.toList()).toDouble()) else attempt++
+                if (times.size >= Reaction.TAPS) {
+                    done(MindRun(Reaction.median(times.toList()).toDouble(), times.size, times.size + falseStarts))
+                } else {
+                    attempt++
+                }
             }
             ReactPhase.TooSoon -> {
                 delay(1_100)
@@ -585,11 +606,13 @@ fun ReactionGame(accent: Color, onDone: (Double) -> Unit) {
         when (val p = phase) {
             ReactPhase.Wait -> {
                 haptics.performHapticFeedback(HapticFeedbackType.Reject)
+                falseStarts++
                 phase = ReactPhase.TooSoon
             }
             is ReactPhase.Go -> {
                 val ms = if (p.atNanos == Long.MAX_VALUE) 0 else (System.nanoTime() - p.atNanos) / 1_000_000
                 if (Reaction.isFalseStart(ms)) {
+                    falseStarts++
                     phase = ReactPhase.TooSoon
                 } else {
                     times += ms

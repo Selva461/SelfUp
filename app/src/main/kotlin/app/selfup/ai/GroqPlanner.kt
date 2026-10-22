@@ -4,6 +4,9 @@ import android.content.Context
 import app.selfup.core.PlanCode
 import app.selfup.core.PlanCodeResult
 import app.selfup.core.PlanPrompt
+import app.selfup.core.WorkCode
+import app.selfup.core.WorkCodeResult
+import app.selfup.core.WorkPrompt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -37,6 +40,12 @@ sealed interface PlanReply {
     data class Failed(val message: String) : PlanReply
 }
 
+sealed interface JudgeReply {
+    /** A work code the model wrote, already checked to parse. */
+    data class Ok(val code: String) : JudgeReply
+    data class Failed(val message: String) : JudgeReply
+}
+
 /**
  * Asks a model on Groq (OpenAI-compatible API, free tier) for a plan code. If the first
  * answer doesn't parse, it gets one chance to fix it, with the parser's error quoted.
@@ -61,19 +70,49 @@ class GroqPlanner(private val settings: AiSettings, private val http: Http = Htt
             }
             PlanReply.Failed("The model's plan didn't follow the format. Try again, or reword what you want.")
         } catch (e: HttpError) {
-            PlanReply.Failed(
-                when (e.code) {
-                    401, 403 -> "Groq didn't accept that key. Check it at console.groq.com/keys."
-                    429 -> "Groq's free limit is used up for now. Try again in a minute."
-                    in 500..599 -> "Groq is having trouble right now. Try again shortly."
-                    else -> "Groq returned an error (${e.code})."
-                },
-            )
+            PlanReply.Failed(httpMessage(e))
         } catch (e: IOException) {
-            PlanReply.Failed("Couldn't reach Groq. Check your connection.")
+            PlanReply.Failed(OFFLINE)
         } catch (e: JSONException) {
-            PlanReply.Failed("Groq sent back something unexpected. Try again.")
+            PlanReply.Failed(UNEXPECTED)
         }
+    }
+
+    /**
+     * Has a model score [description] as a strict reviewer would, as a work code. It only reads
+     * the description, so the app files its verdict as Groq's, which can never reach full XP.
+     */
+    suspend fun judge(description: String): JudgeReply = withContext(Dispatchers.IO) {
+        val key = settings.groqKey ?: return@withContext JudgeReply.Failed("Add your Groq key first, under Goals.")
+        try {
+            val model = pickModel(key)
+            val messages = JSONArray()
+                .put(message("system", WorkPrompt.system()))
+                .put(message("user", WorkPrompt.user(description)))
+            repeat(ATTEMPTS) {
+                val reply = complete(key, model, messages, temperature = 0.1)
+                val code = reply.lines().dropWhile { !it.trim().equals(WorkCode.HEADER, ignoreCase = true) }.joinToString("\n")
+                when (val result = WorkCode.parse(code)) {
+                    is WorkCodeResult.Ok -> return@withContext JudgeReply.Ok(code)
+                    is WorkCodeResult.Error -> messages.put(message("assistant", reply))
+                        .put(message("user", "That didn't parse: line ${result.line}: ${result.message}. Reply with only the corrected block."))
+                }
+            }
+            JudgeReply.Failed("The model's verdict didn't follow the format. Try again.")
+        } catch (e: HttpError) {
+            JudgeReply.Failed(httpMessage(e))
+        } catch (e: IOException) {
+            JudgeReply.Failed(OFFLINE)
+        } catch (e: JSONException) {
+            JudgeReply.Failed(UNEXPECTED)
+        }
+    }
+
+    private fun httpMessage(e: HttpError): String = when (e.code) {
+        401, 403 -> "Groq didn't accept that key. Check it at console.groq.com/keys."
+        429 -> "Groq's free limit is used up for now. Try again in a minute."
+        in 500..599 -> "Groq is having trouble right now. Try again shortly."
+        else -> "Groq returned an error (${e.code})."
     }
 
     /** The best chat model the key can use; Groq retires models, so the list is read live. */
@@ -85,11 +124,11 @@ class GroqPlanner(private val settings: AiSettings, private val http: Http = Htt
             ?: throw IOException("No chat models available")
     }
 
-    private fun complete(key: String, model: String, messages: JSONArray): String {
+    private fun complete(key: String, model: String, messages: JSONArray, temperature: Double = 0.3): String {
         val request = JSONObject()
             .put("model", model)
             .put("messages", messages)
-            .put("temperature", 0.3)
+            .put("temperature", temperature)
             .put("max_tokens", 1_500)
         val body = JSONObject(http.post("$BASE/chat/completions", key, request.toString()))
         return body.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content")
@@ -100,6 +139,8 @@ class GroqPlanner(private val settings: AiSettings, private val http: Http = Htt
     companion object {
         private const val BASE = "https://api.groq.com/openai/v1"
         private const val ATTEMPTS = 2
+        private const val OFFLINE = "Couldn't reach Groq. Check your connection."
+        private const val UNEXPECTED = "Groq sent back something unexpected. Try again."
 
         /** Strongest first. Unverified against Groq's current list; anything missing is skipped. */
         private val PREFERRED = listOf("openai/gpt-oss-120b", "llama-3.3-70b-versatile", "openai/gpt-oss-20b", "llama-3.1-8b-instant")

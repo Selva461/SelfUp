@@ -37,8 +37,11 @@ object QuestNotifications {
             PackageManager.PERMISSION_GRANTED
     }
 
-    /** Returns false when the OS isn't letting the app post. */
-    fun show(context: Context, quest: Quest): Boolean {
+    /**
+     * Returns false when the OS isn't letting the app post. A [checked] quest gets no Done
+     * action: the System completes it from its own data.
+     */
+    fun show(context: Context, quest: Quest, checked: Boolean = false): Boolean {
         ensureChannel(context)
         if (!canPost(context)) return false
 
@@ -52,7 +55,7 @@ object QuestNotifications {
             .setContentIntent(openApp(context, quest.id))
         if (PopupActivity.canUseFullScreen(context)) builder.setFullScreenIntent(popup(context, quest.id), true)
         // Logging quests need a number, so they open the app instead of completing in place.
-        if (quest.input !is CompletionInput.Number) {
+        if (quest.input !is CompletionInput.Number && !checked) {
             builder.addAction(0, context.getString(R.string.action_done), doneAction(context, quest.id))
         }
 

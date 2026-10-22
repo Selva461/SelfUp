@@ -67,13 +67,13 @@ class FocusRepositoryTest {
         val id = phoneOffQuest()
         source.events += listOf(
             UsageEvent(insta, at(monday, "12:00"), UsageKind.RESUMED),
-            UsageEvent(insta, at(monday, "12:12"), UsageKind.PAUSED),
+            UsageEvent(insta, at(monday, "12:04"), UsageKind.PAUSED),
             UsageEvent("launcher", at(monday, "22:40"), UsageKind.RESUMED),
         )
         clock.now = at(monday.plusDays(1), "09:00")
 
         val report = focus.settle()
-        assertEquals(listOf(id), report.verified.map { it.id })
+        assertEquals(listOf(id to 1.0), report.verified.map { (quest, p) -> quest.id to p })
         assertEquals(10, report.bonusXp)
         assertTrue(life.closeFinishedDays().missed.isEmpty())
         assertEquals(30, life.observeStats().first().single { it.stat == Stat.LIFE }.totalXp.toInt())
@@ -81,7 +81,8 @@ class FocusRepositoryTest {
 
         val day = monday.toEpochDay()
         val tracking = db.trackingDao()
-        assertEquals(12 * 60_000L, tracking.phoneDay(day)?.entertainmentMillis)
+        assertEquals(4 * 60_000L, tracking.phoneDay(day)?.entertainmentMillis)
+        assertEquals(listOf("PHONE_OFF"), tracking.autoChecksOn(day).map { it.kind })
         assertEquals(2, tracking.phoneDay(day)?.opens)
         assertEquals(setOf(insta, "launcher"), tracking.appUsageOn(day).map { it.pkg }.toSet())
         assertEquals(listOf("verified", "bonus"), tracking.focusEventsOn(day).map { it.kind })
@@ -97,8 +98,28 @@ class FocusRepositoryTest {
             UsageEvent(insta, at(monday.plusDays(1), "00:30"), UsageKind.RESUMED),
         )
         clock.now = at(monday.plusDays(1), "09:00")
-        assertTrue(focus.settle().isEmpty)
+        val report = focus.settle()
+        assertEquals(1, report.failed.size)
+        assertTrue(report.verified.isEmpty())
+        // Far over budget costs XP, though never below the level floor (there's no XP yet).
+        assertEquals(-1, report.bonusXp)
         assertEquals(1, life.closeFinishedDays().missed.size)
+    }
+
+    @Test
+    fun aQuickCheckAfterTheCutoffEarnsPartialXp() = runTest {
+        val id = phoneOffQuest()
+        source.events += listOf(
+            UsageEvent("com.whatsapp", at(monday, "23:30"), UsageKind.RESUMED),
+            UsageEvent("com.whatsapp", at(monday, "23:33"), UsageKind.PAUSED),
+        )
+        clock.now = at(monday.plusDays(1), "09:00")
+        val report = focus.settle()
+        // One open and 3 minutes: 1 − 0.15 − 0.1 = 0.75, which pays 8 of 20.
+        assertEquals(listOf(id), report.verified.map { it.first.id })
+        assertEquals(0.75, report.verified.single().second, 1e-9)
+        assertEquals(8 + 10, life.observeStats().first().single { it.stat == Stat.LIFE }.totalXp.toInt())
+        assertTrue(life.closeFinishedDays().missed.isEmpty())
     }
 
     @Test

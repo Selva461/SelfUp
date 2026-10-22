@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.selfup.core.MindGame
 import app.selfup.core.MindRules
+import app.selfup.core.MindRun
 import app.selfup.core.StatChange
 import app.selfup.data.MindRepository
 import app.selfup.data.MindResult
@@ -43,9 +44,9 @@ class MindViewModel(private val mind: MindRepository) : ViewModel() {
     private val _events = Channel<MindEvent>(Channel.BUFFERED)
     val events: Flow<MindEvent> = _events.receiveAsFlow()
 
-    fun record(game: MindGame, score: Double) {
+    fun record(game: MindGame, run: MindRun) {
         viewModelScope.launch {
-            val result = mind.record(game, score)
+            val result = mind.record(game, run)
             _events.send(MindEvent.Result(result))
             val leveled = result.changes.filter { it.leveledUp }
             if (leveled.isNotEmpty()) _events.send(MindEvent.LeveledUp(leveled))

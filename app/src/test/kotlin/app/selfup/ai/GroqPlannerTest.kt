@@ -72,4 +72,19 @@ class GroqPlannerTest {
         assertTrue(GroqPlanner(settings, http).plan("x", emptyList()) is PlanReply.Failed)
         assertTrue(http.sent.isEmpty())
     }
+
+    @Test
+    fun theJudgeReturnsAWorkCodeAfterChatter() = runTest {
+        val http = FakeHttp(
+            mutableListOf(
+                "Sure.\nSELFUP WORK 1\nTITLE App\nDIFFICULTY 9\nQUALITY 3\nCOMPLETE 3\nOWNERSHIP 2",
+                "SELFUP WORK 1\nTITLE App\nDIFFICULTY 3\nQUALITY 3\nCOMPLETE 3\nOWNERSHIP 2\nJUDGE groq",
+            ),
+            models = listOf("llama-3.3-70b-versatile"),
+        )
+        val reply = GroqPlanner(settings, http).judge("I built an app")
+        reply as JudgeReply.Ok
+        assertTrue(reply.code.startsWith("SELFUP WORK 1"))
+        assertEquals(2, http.sent.size)
+    }
 }

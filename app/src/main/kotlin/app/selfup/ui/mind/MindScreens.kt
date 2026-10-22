@@ -43,6 +43,8 @@ import androidx.compose.ui.unit.dp
 import app.selfup.core.Metric
 import app.selfup.core.MindGame
 import app.selfup.core.MindRules
+import app.selfup.core.MindRun
+import app.selfup.core.Performance
 import app.selfup.data.MindRepository
 import app.selfup.ui.components.GroupHeader
 import app.selfup.ui.components.GroupSeparator
@@ -53,6 +55,7 @@ import app.selfup.ui.components.Tag
 import app.selfup.ui.components.pressScale
 import app.selfup.ui.records.Sparkline
 import app.selfup.ui.theme.SectionLabel
+import app.selfup.ui.theme.SystemColors
 
 /** The Mind section of the Skills tab: today's session, then every game with its best. */
 fun LazyListScope.mindSection(state: MindState, onSession: () -> Unit, onGame: (MindGame) -> Unit) {
@@ -113,7 +116,17 @@ private fun GameRow(game: MindGame, best: Double?, scores: List<Double>, playedT
 private sealed interface MindStep {
     data class Intro(val index: Int) : MindStep
     data class Play(val index: Int) : MindStep
-    data class Result(val index: Int, val score: Double, val previousBest: Double?, val xp: Int) : MindStep
+    data class Result(
+        val index: Int,
+        val run: MindRun,
+        val previousBest: Double?,
+        /** The score that counted as up to the mark for this run. */
+        val target: Double,
+        val performance: Double,
+        val xp: Int,
+        /** False for a replay: only the day's first game of each kind is scored. */
+        val scored: Boolean,
+    ) : MindStep
     data object Done : MindStep
 }
 
@@ -125,7 +138,7 @@ private sealed interface MindStep {
 fun MindSessionScreen(
     games: List<MindGame>,
     state: MindState,
-    onScored: (MindGame, Double) -> Unit,
+    onScored: (MindGame, MindRun) -> Unit,
     onClose: () -> Unit,
 ) {
     val latest by rememberUpdatedState(state)
@@ -133,15 +146,16 @@ fun MindSessionScreen(
     val results = remember { mutableStateListOf<Pair<MindGame, Double>>() }
     var played by remember { mutableIntStateOf(0) }
 
-    fun finish(index: Int, score: Double) {
+    fun finish(index: Int, run: MindRun) {
         val game = games[index]
         // Read the history before this score lands, so the preview matches what the ledger grants.
         val summary = latest.summary(game)
-        val xp = MindRules.xpFor(game, score, summary.scores, summary.playedToday)
-        onScored(game, score)
-        results += game to score
+        val performance = MindRules.performance(game, run, summary.scores)
+        val xp = MindRules.xpFor(game, run, summary.scores, summary.playedToday)
+        onScored(game, run)
+        results += game to run.score
         played = index + 1
-        step = MindStep.Result(index, score, summary.best, xp)
+        step = MindStep.Result(index, run, summary.best, MindRules.target(game, summary.scores), performance, xp, scored = !summary.playedToday)
     }
 
     Column(
@@ -168,7 +182,7 @@ fun MindSessionScreen(
                 is MindStep.Intro -> IntroStep(games[current.index], state) { step = MindStep.Play(current.index) }
                 is MindStep.Play -> {
                     val game = games[current.index]
-                    val done: (Double) -> Unit = { finish(current.index, it) }
+                    val done: (MindRun) -> Unit = { finish(current.index, it) }
                     when (game) {
                         MindGame.DIGIT_SPAN -> DigitSpanGame(MindAccent, done)
                         MindGame.N_BACK -> NBackGame(startN = state.summary(game).latest?.toInt()?.coerceAtLeast(1) ?: 1, MindAccent, done)
@@ -179,9 +193,12 @@ fun MindSessionScreen(
                 }
                 is MindStep.Result -> ResultStep(
                     game = games[current.index],
-                    score = current.score,
+                    run = current.run,
                     previousBest = current.previousBest,
+                    performance = current.performance,
+                    target = current.target,
                     xp = current.xp,
+                    scored = current.scored,
                     isLast = current.index == games.lastIndex,
                     onContinue = { step = if (current.index == games.lastIndex) MindStep.Done else MindStep.Intro(current.index + 1) },
                 )
@@ -225,7 +242,18 @@ private fun IntroStep(game: MindGame, state: MindState, onStart: () -> Unit) {
 }
 
 @Composable
-private fun ResultStep(game: MindGame, score: Double, previousBest: Double?, xp: Int, isLast: Boolean, onContinue: () -> Unit) {
+private fun ResultStep(
+    game: MindGame,
+    run: MindRun,
+    previousBest: Double?,
+    target: Double,
+    performance: Double,
+    xp: Int,
+    scored: Boolean,
+    isLast: Boolean,
+    onContinue: () -> Unit,
+) {
+    val score = run.score
     val newBest = previousBest != null && game.isBetter(score, previousBest)
     Column(
         Modifier.fillMaxSize().padding(top = 40.dp),
@@ -243,7 +271,19 @@ private fun ResultStep(game: MindGame, score: Double, previousBest: Double?, xp:
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (xp > 0) Tag("+$xp XP · ${MindRepository.STAT.displayName}", MindAccent)
+        Text(
+            buildString {
+                append("Target ${MindFormat.score(game, target)}")
+                if (game.scoresAccuracy && run.attempts > 0) append(" · ${run.correct}/${run.attempts} right")
+                append(if (scored) " · ${Performance.label(performance)} ${(performance * 100).toInt()}%" else " · replay, not scored")
+            },
+            style = MaterialTheme.typography.labelLarge,
+            color = if (Performance.isPerfect(performance)) MindAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        when {
+            xp > 0 -> Tag("+$xp XP · ${MindRepository.STAT.displayName}", MindAccent)
+            xp < 0 -> Tag("−${-xp} XP · ${MindRepository.STAT.displayName}", SystemColors.Danger)
+        }
         Box(Modifier.weight(1f))
         PrimaryButton(if (isLast) "Finish" else "Next game", MindAccent, onContinue)
     }

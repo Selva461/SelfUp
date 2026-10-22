@@ -71,14 +71,19 @@ class SkillsTest {
     }
 
     @Test
-    fun `quiz xp once a day, plus a bonus for reaching solid`() {
+    fun `quiz xp follows the score, the first try of the day counts, plus a bonus for reaching solid`() {
         val start = ConceptState()
-        assertEquals(SkillRules.QUIZ_XP, SkillRules.xpFor(start, quiz(0, 3), emptyList()))
+        assertEquals(SkillRules.QUIZ_XP, SkillRules.xpFor(start, quiz(0, 5), emptyList()))
+        assertEquals(5, SkillRules.xpFor(start, quiz(0, 4), emptyList()))
+        assertEquals(2, SkillRules.xpFor(start, quiz(0, 3), emptyList()))
         assertEquals(0, SkillRules.xpFor(start, quiz(0, 2), emptyList()))
-        assertEquals(0, SkillRules.xpFor(SkillRules.replay(listOf(quiz(0, 3))), quiz(0, 4), listOf(quiz(0, 3))))
+        assertEquals(-1, SkillRules.xpFor(start, quiz(0, 1), emptyList()))
+        assertEquals(-1, SkillRules.xpFor(start, quiz(0, 0), emptyList()))
+        // A retake the same day earns nothing, even when perfect.
+        assertEquals(0, SkillRules.xpFor(SkillRules.replay(listOf(quiz(0, 2))), quiz(0, 5), listOf(quiz(0, 2))))
 
         val beforeSolid = SkillRules.replay(listOf(quiz(0, 4)))
-        assertEquals(SkillRules.QUIZ_XP + SkillRules.MASTERY_BONUS_XP, SkillRules.xpFor(beforeSolid, quiz(3, 4), emptyList()))
+        assertEquals(5 + SkillRules.MASTERY_BONUS_XP, SkillRules.xpFor(beforeSolid, quiz(3, 4), emptyList()))
     }
 
     private fun concept(id: String) = Concept(

@@ -76,4 +76,21 @@ class XpRulesTest {
         // Strength 3, Money 2, three others at 1.
         assertEquals(8, StatProgress.overallLevel(stats))
     }
+
+    @Test
+    fun `scored quests earn by performance and a fail costs the first stat`() {
+        val quest = Quest(title = "Gym", difficulty = Difficulty.MEDIUM, stats = setOf(Stat.STRENGTH, Stat.LIFE), schedule = Schedule.Recurring())
+        assertEquals(mapOf(Stat.STRENGTH to 10, Stat.LIFE to 10), XpRules.scoredDeltas(quest, 1.0))
+        assertEquals(mapOf(Stat.STRENGTH to 5, Stat.LIFE to 5), XpRules.scoredDeltas(quest, 0.8))
+        assertEquals(mapOf(Stat.STRENGTH to -2), XpRules.scoredDeltas(quest, 0.1))
+    }
+
+    @Test
+    fun `losses never take a level`() {
+        val floor = Leveling.floorXp(2)
+        assertEquals(-1, XpRules.lossDelta(floor + 10, 1))
+        assertEquals(-3, XpRules.settle(floor + 3, -5))
+        assertEquals(0, XpRules.settle(floor, -5))
+        assertEquals(7, XpRules.settle(floor, 7))
+    }
 }

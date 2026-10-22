@@ -2,6 +2,7 @@ package app.selfup.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import app.selfup.core.AutoCheck
 import app.selfup.core.Quest
 import app.selfup.core.StatChange
 import app.selfup.core.StatProgress
@@ -9,7 +10,9 @@ import app.selfup.core.StreakState
 import app.selfup.data.CompletionResult
 import app.selfup.data.DayCloseReport
 import app.selfup.data.DayQuest
+import app.selfup.data.HealthRepository
 import app.selfup.data.LifeRepository
+import app.selfup.data.NutritionReport
 import app.selfup.focus.FocusReport
 import app.selfup.focus.FocusRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -38,7 +41,7 @@ data class TodayState(
 
 sealed interface GameEvent {
     /** XP was granted; the UI offers an undo. */
-    data class Completed(val quest: Quest, val changes: List<StatChange>) : GameEvent
+    data class Completed(val quest: Quest, val changes: List<StatChange>, val performance: Double? = null) : GameEvent
 
     /** One or more stats gained a level from a single completion. */
     data class LeveledUp(val changes: List<StatChange>) : GameEvent
@@ -46,13 +49,23 @@ sealed interface GameEvent {
     /** Finished days were settled: misses penalized or shielded, or the streak broke. */
     data class DayClosed(val report: DayCloseReport) : GameEvent
 
-    /** The usage log verified quests or earned the under-budget bonus for yesterday. */
+    /** The usage log scored yesterday's "Phone off" quests and screen time. */
     data class FocusSettled(val report: FocusReport) : GameEvent
+
+    /** The meal log scored finished days' meal quests. */
+    data class NutritionSettled(val report: NutritionReport) : GameEvent
+
+    /** A tap on a quest the System checks itself. */
+    data class Automatic(val quest: Quest, val check: AutoCheck) : GameEvent
 }
 
 /** Today's quests and stats, shared by Home and Quests so both react to the same events. */
 @OptIn(ExperimentalCoroutinesApi::class)
-class GameViewModel(private val repository: LifeRepository, private val focus: FocusRepository? = null) : ViewModel() {
+class GameViewModel(
+    private val repository: LifeRepository,
+    private val focus: FocusRepository? = null,
+    private val health: HealthRepository? = null,
+) : ViewModel() {
     private val _events = Channel<GameEvent>(Channel.BUFFERED)
     val events: Flow<GameEvent> = _events.receiveAsFlow()
 
@@ -61,6 +74,8 @@ class GameViewModel(private val repository: LifeRepository, private val focus: F
         .onEach { _ ->
             // Screen-time checks first, so a verified "Phone off" quest isn't settled as missed.
             focus?.settle()?.takeUnless { it.isEmpty }?.let { _events.send(GameEvent.FocusSettled(it)) }
+            // Meals next: "last meal before bed" reads the last phone use the usage log just stored.
+            health?.settle(repository)?.takeUnless { it.isEmpty }?.let { _events.send(GameEvent.NutritionSettled(it)) }
             val report = repository.closeFinishedDays()
             if (!report.isEmpty) _events.send(GameEvent.DayClosed(report))
         }
@@ -74,10 +89,11 @@ class GameViewModel(private val repository: LifeRepository, private val focus: F
     fun complete(quest: Quest, value: Double? = null) {
         viewModelScope.launch {
             val result = repository.complete(quest.id, value)
+            if (result is CompletionResult.Automatic) _events.send(GameEvent.Automatic(quest, result.check))
             if (result is CompletionResult.Completed) {
                 val levelUps = result.changes.filter { it.leveledUp }
                 if (levelUps.isNotEmpty()) _events.send(GameEvent.LeveledUp(levelUps))
-                _events.send(GameEvent.Completed(quest, result.changes))
+                _events.send(GameEvent.Completed(quest, result.changes, result.performance))
             }
         }
     }

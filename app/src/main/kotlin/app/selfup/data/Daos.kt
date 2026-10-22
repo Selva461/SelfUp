@@ -79,6 +79,13 @@ interface CompletionDao {
     @Query("SELECT value FROM completion WHERE questId = :questId AND value IS NOT NULL ORDER BY completedAtMillis DESC LIMIT 1")
     suspend fun lastValue(questId: Long): Double?
 
+    /** Logged numbers of [questId] before [beforeEpochDay], oldest first: the history a spend is judged against. */
+    @Query("SELECT value FROM completion WHERE questId = :questId AND value IS NOT NULL AND epochDay < :beforeEpochDay ORDER BY epochDay")
+    suspend fun valuesBefore(questId: Long, beforeEpochDay: Long): List<Double>
+
+    @Query("UPDATE completion SET performance = :performance WHERE id = :id")
+    suspend fun setPerformance(id: Long, performance: Double)
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(completion: CompletionEntity): Long
 
@@ -144,6 +151,33 @@ interface TrackingDao {
 
     @Query("SELECT * FROM focus_event WHERE epochDay = :epochDay ORDER BY atMillis")
     suspend fun focusEventsOn(epochDay: Long): List<FocusEventEntity>
+
+    @Insert
+    suspend fun insertAutoCheck(check: AutoCheckEntity): Long
+
+    @Query("SELECT * FROM auto_check WHERE epochDay = :epochDay ORDER BY atMillis")
+    suspend fun autoChecksOn(epochDay: Long): List<AutoCheckEntity>
+
+    @Query("SELECT * FROM auto_check WHERE questId = :questId AND epochDay = :epochDay ORDER BY atMillis DESC, id DESC LIMIT 1")
+    suspend fun lastAutoCheck(questId: Long, epochDay: Long): AutoCheckEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putGymScores(rows: List<GymSessionScoreEntity>)
+
+    @Query("SELECT * FROM gym_session_score WHERE epochDay = :epochDay ORDER BY startMillis")
+    suspend fun gymScoresOn(epochDay: Long): List<GymSessionScoreEntity>
+}
+
+@Dao
+interface WorkDao {
+    @Query("SELECT * FROM work_log ORDER BY atMillis DESC")
+    fun observeAll(): Flow<List<WorkLogEntity>>
+
+    @Query("SELECT COUNT(*) FROM work_log WHERE fingerprint = :fingerprint")
+    suspend fun count(fingerprint: String): Int
+
+    @Insert
+    suspend fun insert(work: WorkLogEntity): Long
 }
 
 @Dao
@@ -159,6 +193,12 @@ interface HealthDao {
 
     @Query("DELETE FROM meal_log WHERE id = :id")
     suspend fun deleteMeal(id: Long)
+
+    @Query("UPDATE meal_log SET quality = :quality WHERE id = :id")
+    suspend fun setQuality(id: Long, quality: String)
+
+    @Query("SELECT * FROM meal_log WHERE atMillis >= :fromMillis AND atMillis < :toMillis ORDER BY atMillis")
+    suspend fun mealsBetween(fromMillis: Long, toMillis: Long): List<MealLogEntity>
 
     /** Money logged through number quests, per quest day. */
     @Query(

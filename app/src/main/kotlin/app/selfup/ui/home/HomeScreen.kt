@@ -114,6 +114,8 @@ private fun DailyQuestWindow(state: TodayState, onComplete: (Quest) -> Unit, onE
                     done = item.isDone,
                     onTap = { if (!item.isDone) onComplete(item.quest) },
                     onLongPress = { onEdit(item.quest) },
+                    check = item.check,
+                    earnedXp = item.earnedXp,
                 )
             }
         }

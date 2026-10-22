@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.selfup.core.AutoCheck
 import app.selfup.core.CompletionInput
 import app.selfup.core.DayBoundary
 import app.selfup.core.DefaultQuests
@@ -340,6 +341,68 @@ class LifeRepositoryTest {
         clock.set(testDay.plusDays(1).atTime(10, 0).atZone(zone).toInstant())
         repo.closeFinishedDays()
         assertTrue(repo.observeAllQuests().first().none { it.title.startsWith("Test day") })
+    }
+
+    // Checked quests: the System's verdict, not a tap.
+
+    @Test
+    fun checkedQuestsCantBeTappedAndEarnByVerdict() = runTest {
+        repo.setGymLinked(true)
+        val id = repo.saveQuest(quest())
+        val today = repo.today()
+        assertEquals(CompletionResult.Automatic(AutoCheck.GYM), repo.complete(id))
+        assertEquals(AutoCheck.GYM, repo.observeDay(today).first().single().check)
+
+        // A session in progress: 0.8 pays 10 of 20.
+        val first = repo.verify(id, today, AutoCheck.GYM, 0.8, "sets=10") as CompletionResult.Completed
+        assertEquals(listOf(10), first.changes.map { it.delta })
+        assertEquals(10, repo.observeDay(today).first().single().earnedXp)
+
+        // It finishes up to the mark: the difference is granted.
+        val full = repo.verify(id, today, AutoCheck.GYM, 1.0, "sets=14") as CompletionResult.Rescored
+        assertEquals(listOf(10), full.changes.map { it.delta })
+        assertEquals(20, totalXp(Stat.STRENGTH))
+        assertEquals(CompletionResult.AlreadyDone, repo.verify(id, today, AutoCheck.GYM, 1.0, "sets=14"))
+        assertNull(repo.undoCompletion(id))
+
+        // Gym edits shrink it to a fail: the completion and its XP go.
+        assertTrue(repo.verify(id, today, AutoCheck.GYM, 0.2, "sets=2") is CompletionResult.Failed)
+        assertEquals(0, totalXp(Stat.STRENGTH))
+        assertFalse(repo.observeDay(today).first().single().isDone)
+        assertEquals(3, db.trackingDao().autoChecksOn(today.toEpochDay()).size)
+    }
+
+    @Test
+    fun aGymQuestIsATapUntilGymIsLinked() = runTest {
+        val id = repo.saveQuest(quest())
+        assertTrue(repo.complete(id) is CompletionResult.Completed)
+        repo.setGymLinked(true)
+        repo.setGymLinked(false)
+        assertEquals(null, repo.observeDay(repo.today()).first().single().check)
+    }
+
+    @Test
+    fun aSettledDayCantBeVerifiedLater() = runTest {
+        val id = repo.saveQuest(quest(stats = setOf(Stat.LIFE)).copy(title = "Phone off by 23:00"))
+        repo.closeFinishedDays()
+        val monday = repo.today()
+        clock.advance(Duration.ofDays(1))
+        repo.closeFinishedDays()
+        assertEquals(CompletionResult.Closed, repo.verify(id, monday, AutoCheck.PHONE_OFF, 1.0, ""))
+    }
+
+    @Test
+    fun spendingIsScoredAgainstYourTypicalDay() = runTest {
+        val id = repo.saveQuest(quest(stats = setOf(Stat.MONEY), difficulty = Difficulty.EASY, input = CompletionInput.Number("₹")).copy(title = "Log spending"))
+        repeat(7) {
+            assertEquals(1.0, (repo.complete(id, value = 300.0) as CompletionResult.Completed).performance!!, 0.0)
+            clock.advance(Duration.ofDays(1))
+        }
+        val total = totalXp(Stat.MONEY)
+        // Double the typical day: half performance, 1 XP of 10.
+        val doubled = repo.complete(id, value = 600.0) as CompletionResult.Completed
+        assertEquals(0.5, doubled.performance!!, 1e-9)
+        assertEquals(total + 1, totalXp(Stat.MONEY))
     }
 }
 
