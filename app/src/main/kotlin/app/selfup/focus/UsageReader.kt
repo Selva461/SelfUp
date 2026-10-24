@@ -57,7 +57,7 @@ class UsageReader(private val context: Context) : UsageSource {
                 @Suppress("DEPRECATION") UsageEvents.Event.MOVE_TO_BACKGROUND -> UsageKind.PAUSED
                 else -> null
             } ?: continue
-            out += UsageEvent(event.packageName, Instant.ofEpochMilli(event.timeStamp), kind)
+            out += UsageEvent(event.packageName, Instant.ofEpochMilli(event.timeStamp), kind, event.className)
         }
         return out
     }

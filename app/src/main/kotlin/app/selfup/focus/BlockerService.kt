@@ -9,6 +9,9 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
@@ -21,7 +24,8 @@ import androidx.core.content.ContextCompat
 import app.selfup.MainActivity
 import app.selfup.R
 import app.selfup.SelfUpApplication
-import app.selfup.core.ScreenTime
+import app.selfup.alert.Alerts
+import app.selfup.core.ForegroundTracker
 import app.selfup.core.UsageEvent
 import app.selfup.reminders.PopupActivity
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -40,13 +44,14 @@ import java.time.Instant
 /**
  * Locks entertainment apps once the day's budget is spent. It reads which app came to the
  * front from Android's usage log (the same read-only log screen time uses, never what is on
- * screen) and covers a locked one with [LockOverlay]. While a watched app stays open it
- * re-checks every [RECHECK_MS], so a long reels session is cut off when the budget runs
- * out, not only on the next app switch.
+ * screen) and covers a locked one with the lockdown alert. While a watched app stays open
+ * it re-checks every [RECHECK_MS], and every [LOCKED_RECHECK_MS] once its budget is gone, so
+ * a long reading session is cut off when the budget runs out and a lock that was somehow
+ * cleared comes straight back.
  *
- * The lock is a window drawn over the app, then [BlockActivity] opens on top of it so the
- * app underneath stops. Where Android or the phone maker refuses to open a screen from the
- * background, the window alone keeps the app locked.
+ * The lock is a window drawn over the app (see [app.selfup.alert.AlertCenter]), then
+ * [BlockActivity] opens on top of it so the app underneath stops. Where Android or the phone
+ * maker refuses to open a screen from the background, the window alone keeps the app locked.
  *
  * This is a foreground service rather than an accessibility service on purpose: Play
  * Protect blocks sideloaded installs of any app that declares an accessibility service.
@@ -56,12 +61,18 @@ class BlockerService : Service() {
         SupervisorJob() + Dispatchers.Main.immediate + CoroutineExceptionHandler { _, e -> Log.w(TAG, "App lock check failed", e) },
     )
     private val usage by lazy { UsageReader(this) }
-    private val overlay by lazy { LockOverlay(this) }
+    private val audio by lazy { getSystemService(AudioManager::class.java) }
+    private val tracker = ForegroundTracker(passThrough)
     private var poll: Job? = null
     private var watch: Job? = null
     private var foreground: String? = null
 
-    private val focus get() = (application as SelfUpApplication).focus
+    /** The app under the lockdown alert, or null when none is up. */
+    private var lockedPkg: String? = null
+    private var audioFocus: AudioFocusRequest? = null
+
+    private val app get() = application as SelfUpApplication
+    private val focus get() = app.focus
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -85,8 +96,11 @@ class BlockerService : Service() {
         // Events logged in the same millisecond as [seen], already handled.
         var handled = emptySet<UsageEvent>()
         var first = true
+        app.alerts.entertainment = withContext(Dispatchers.IO) { runCatching { usage.entertainment() }.getOrDefault(emptySet()) }
         while (scope.isActive) {
             if (power?.isInteractive == false) {
+                // Every app pauses with the screen off; start clean when it comes back on.
+                tracker.clear()
                 delay(IDLE_MS)
                 continue
             }
@@ -101,7 +115,7 @@ class BlockerService : Service() {
                 val last = fresh.maxOf { it.at }
                 handled = if (last == seen) handled + fresh else fresh.filter { it.at == last }.toSet()
                 seen = last
-                when (val front = ScreenTime.frontApp(fresh, foreground, passThrough)) {
+                when (val front = tracker.apply(fresh)) {
                     foreground -> Unit
                     null -> onBackground()
                     else -> onFront(front)
@@ -113,18 +127,23 @@ class BlockerService : Service() {
 
     private fun onFront(pkg: String) {
         foreground = pkg
+        app.alerts.front = pkg
         watch?.cancel()
         // Anything else in front (the home screen, another app, or BlockActivity taking over)
-        // ends the lock window. Coming back to the locked app keeps it.
-        if (overlay.lockedPkg != pkg) overlay.hide()
+        // ends the lock. Coming back to the locked app keeps it, or brings it straight back.
+        if (lockedPkg != pkg) unlock()
         if (pkg == packageName) return
         watch = scope.launch {
+            var spent = false
             while (isActive && foreground == pkg) {
-                if (!overlay.isLocked) {
-                    focus.budgetWarning(pkg)?.let(overlay::showWarning)
-                    if (focus.shouldBlock(pkg)) lockOut(pkg)
+                // Checked against the alert itself, so a lock closed without leaving the app
+                // (its home button failed, or the grace minutes ran out) comes straight back.
+                if (!app.alerts.has(Alerts.LOCK_KEY)) {
+                    focus.budgetWarning(pkg)?.let { app.alerts.post(Alerts.finalWarning(pkg, it)) }
+                    spent = focus.shouldBlock(pkg)
+                    if (spent) lockOut(pkg)
                 }
-                delay(RECHECK_MS)
+                delay(if (spent) LOCKED_RECHECK_MS else RECHECK_MS)
             }
         }
     }
@@ -132,18 +151,29 @@ class BlockerService : Service() {
     /** The app in front went to the background with nothing new in front: the screen went off. */
     private fun onBackground() {
         foreground = null
+        app.alerts.front = null
         watch?.cancel()
     }
 
     private fun lockOut(pkg: String) {
-        overlay.showLock(pkg, focus, onLeave = ::goHome, onGrace = overlay::hide)
+        unlock()
+        lockedPkg = pkg
+        app.alerts.post(Alerts.lockdown(app, pkg))
+        // Video and music under the lock stop, as they would behind a full screen.
+        audioFocus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+            .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).build())
+            .build()
+            .also { request -> runCatching { audio?.requestAudioFocus(request) } }
         // With the lock window showing, Android 15 allows opening a screen from the background.
         open(BlockActivity.intent(this, pkg))
     }
 
-    /** The lock window stays until the home screen shows up in the usage log. */
-    private fun goHome() {
-        open(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    private fun unlock() {
+        if (lockedPkg == null) return
+        lockedPkg = null
+        app.alerts.remove(Alerts.LOCK_KEY)
+        audioFocus?.let { request -> runCatching { audio?.abandonAudioFocusRequest(request) } }
+        audioFocus = null
     }
 
     private fun open(intent: Intent) {
@@ -179,7 +209,8 @@ class BlockerService : Service() {
     }
 
     override fun onDestroy() {
-        overlay.hide()
+        unlock()
+        app.alerts.front = null
         scope.cancel()
         super.onDestroy()
     }
@@ -189,6 +220,7 @@ class BlockerService : Service() {
         private const val CHANNEL_ID = "selfup.app_lock"
         private const val NOTIFICATION_ID = 0x5e1f
         private const val RECHECK_MS = 15_000L
+        private const val LOCKED_RECHECK_MS = 2_000L
         private const val POLL_MS = 1_000L
         private const val IDLE_MS = 5_000L
         private val LOOKBACK: Duration = Duration.ofMinutes(5)

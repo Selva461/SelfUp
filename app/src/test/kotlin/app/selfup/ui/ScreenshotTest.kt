@@ -24,7 +24,15 @@ import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.compose.material3.MaterialTheme
+import app.selfup.alert.AlertFrame
+import app.selfup.alert.AlertScope
+import app.selfup.alert.Alerts
 import app.selfup.core.CompletionInput
+import app.selfup.core.Drill
+import app.selfup.ui.components.SystemButton
+import app.selfup.ui.components.SystemLine
+import app.selfup.ui.theme.SystemColors
 import app.selfup.core.DayBoundary
 import app.selfup.core.Difficulty
 import app.selfup.core.HealthDay
@@ -264,6 +272,23 @@ class ScreenshotTest {
 
     @Test
     fun dsaTracker() = shoot("13-dsa") { DsaScreen(dsa, onLog = {}, onProblem = {}, onBack = {}) }
+
+    @Test
+    fun finalWarning() = shoot("14-final-warning") {
+        Alerts.finalWarning("com.qidian.Int.reader", 4).content(object : AlertScope {
+            override val waiting = 1
+            override fun dismiss(closeApp: Boolean) = Unit
+        })
+    }
+
+    @Test
+    fun penaltyWarning() = shoot("15-penalty-warning") {
+        AlertFrame("Penalty warning 3") {
+            SystemLine(Drill.nag(open = 3, level = 2, failRun = 3, seed = 0), color = SystemColors.Danger)
+            quests.take(3).forEach { SystemLine("· ${it.title}", style = MaterialTheme.typography.bodyMedium) }
+            SystemButton("Report now", onClick = {}, accent = SystemColors.Danger)
+        }
+    }
 
     @Composable
     private fun hunterScreen(tab: HunterTab) =

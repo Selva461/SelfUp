@@ -7,17 +7,19 @@ import android.content.Intent
 import android.os.PowerManager
 import android.util.Log
 import app.selfup.SelfUpApplication
+import app.selfup.alert.Alerts
+import app.selfup.data.FocusEventKind
 import app.selfup.focus.BlockerService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-/** Turns a fired alarm into a notification, and handles the notification's Done action. */
+/** Turns a fired alarm into a System order or nag, and handles the fallback notification's Done action. */
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val questId = intent.getLongExtra(EXTRA_QUEST_ID, -1L)
-        if (questId == -1L) return
+        if (questId == -1L && intent.action != ACTION_NAG) return
         val app = context.applicationContext as SelfUpApplication
 
         // onReceive must not block: goAsync keeps the process alive until the work is done.
@@ -26,6 +28,7 @@ class ReminderReceiver : BroadcastReceiver() {
             try {
                 when (intent.action) {
                     ACTION_FIRE -> fire(app, questId)
+                    ACTION_NAG -> nag(app)
                     ACTION_DONE -> {
                         app.repository.complete(questId)
                         QuestNotifications.cancel(app, questId)
@@ -41,17 +44,38 @@ class ReminderReceiver : BroadcastReceiver() {
         }
     }
 
+    /**
+     * The reminder takes over the screen as a System order: a window over every app that a
+     * swipe can't clear. Queued while the phone is locked, it is waiting on unlock. Only
+     * without "Display over other apps" does it fall back to a notification and its popup.
+     */
     private suspend fun fire(app: SelfUpApplication, questId: Long) {
         val repository = app.repository
         val quest = repository.getQuest(questId) ?: return
         // The quest may have been done, rescheduled or expired since the alarm was armed.
         if (repository.isDoneToday(questId) || !quest.schedule.isDueOn(repository.today())) return
-        if (!QuestNotifications.show(app, quest, checked = repository.checkOf(quest) != null)) Log.w(TAG, "Notifications are blocked")
+        val check = repository.checkOf(quest)
+        val dodges = app.focus.countToday(FocusEventKind.DODGED, questId)
+        if (app.alerts.post(Alerts.order(app, quest, check, dodges))) {
+            app.focus.record(FocusEventKind.ORDERED, questId)
+            return
+        }
+        if (!QuestNotifications.show(app, quest, checked = check != null)) Log.w(TAG, "Notifications are blocked")
         // With the screen on and unlocked, pop the System window over whatever is open. When
         // it's off or locked, the notification's full-screen intent shows the same popup.
-        if (PopupActivity.canPopUp(app) && isInUse(app)) {
+        if (isInUse(app)) {
             runCatching { app.startActivity(PopupActivity.quest(app, questId)) }
                 .onFailure { Log.w(TAG, "Popup blocked", it) }
+        }
+    }
+
+    /** Comes back about every quest still open, harder each time today (see [app.selfup.core.Enforcer]). */
+    private suspend fun nag(app: SelfUpApplication) {
+        val open = app.repository.openToday()
+        if (open.isEmpty()) return
+        val level = app.focus.countToday(FocusEventKind.NAGGED)
+        if (app.alerts.post(Alerts.nag(app, open.map { it.quest }, level, app.repository.failRun()))) {
+            app.focus.record(FocusEventKind.NAGGED)
         }
     }
 
@@ -64,6 +88,7 @@ class ReminderReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_FIRE = "app.selfup.action.REMINDER_FIRE"
         const val ACTION_DONE = "app.selfup.action.REMINDER_DONE"
+        const val ACTION_NAG = "app.selfup.action.NAG"
         const val EXTRA_QUEST_ID = "app.selfup.extra.QUEST_ID"
         private const val TAG = "ReminderReceiver"
     }

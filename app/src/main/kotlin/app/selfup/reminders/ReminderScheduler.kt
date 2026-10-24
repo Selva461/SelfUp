@@ -41,6 +41,20 @@ class ReminderScheduler(private val context: Context) {
         prefs.edit().putStringSet(KEY_ARMED, armed.map(Long::toString).toSet()).apply()
     }
 
+    /** Arms the one nag alarm (see [app.selfup.core.Enforcer]), replacing the previous one. */
+    fun armNag(fireAt: Instant) {
+        val intent = Intent(context, ReminderReceiver::class.java).apply {
+            action = ReminderReceiver.ACTION_NAG
+            data = Uri.parse("selfup://nag")
+        }
+        val pending = PendingIntent.getBroadcast(context, NAG_REQUEST, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        try {
+            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireAt.toEpochMilli(), pending)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Could not arm the nag", e)
+        }
+    }
+
     private fun arm(questId: Long, fireAt: Instant) {
         try {
             alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireAt.toEpochMilli(), pendingIntent(questId))
@@ -77,5 +91,8 @@ class ReminderScheduler(private val context: Context) {
     private companion object {
         const val TAG = "ReminderScheduler"
         const val KEY_ARMED = "armed_quest_ids"
+
+        /** Quest alarms use the quest id; ids start at 1, so this can't collide. */
+        const val NAG_REQUEST = -1
     }
 }

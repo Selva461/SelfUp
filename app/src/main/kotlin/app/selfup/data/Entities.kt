@@ -353,6 +353,23 @@ object FocusEventKind {
     const val VERIFIED = "verified"
     const val BONUS = "bonus"
     const val WARNED = "warned"
+
+    // The System's orders and how they were answered, so dodging is on the record too.
+
+    /** A quest's reminder took over the screen. */
+    const val ORDERED = "ordered"
+
+    /** The nag over every open quest took over the screen. */
+    const val NAGGED = "nagged"
+
+    /** An order or nag was answered with Done, Report or On it. */
+    const val OBEYED = "obeyed"
+
+    /** An order was put off ("Later"), a nag ignored, or a report step answered "Not yet". */
+    const val DODGED = "dodged"
+
+    /** A step of the guided report was answered. */
+    const val REPORTED = "reported"
 }
 
 /** A day declared as rest ahead of time (see [app.selfup.core.RestDays]). */

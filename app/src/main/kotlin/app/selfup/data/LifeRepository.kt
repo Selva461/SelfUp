@@ -4,9 +4,12 @@ import androidx.room.withTransaction
 import app.selfup.core.AutoCheck
 import app.selfup.core.CompletionInput
 import app.selfup.core.DailyReset
+import app.selfup.core.Drill
 import app.selfup.core.DayOutcome
 import app.selfup.core.DayBoundary
+import app.selfup.core.DayOutcomeRow
 import app.selfup.core.DefaultQuests
+import app.selfup.core.Enforcer
 import app.selfup.core.Performance
 import app.selfup.core.Quest
 import app.selfup.core.QuestChecks
@@ -24,6 +27,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -146,6 +150,19 @@ class LifeRepository(
             }
             .map { DayQuest(it, byQuest[it.id], QuestChecks.of(it, gymConnected = gymLinked != null)) }
     }
+
+    /**
+     * Today's quests still open that can be done today, the ones the System nags about.
+     * Quests settled from tomorrow's data (phone off at night, the day's meals) are left out.
+     */
+    suspend fun openToday(): List<DayQuest> = observeDay(today()).first().filter { !it.isDone && Enforcer.pushable(it.check) }
+
+    /** Closed days failed in a row up to yesterday: misses that no shield or rest day excused. */
+    suspend fun failRun(): Int = Drill.failRun(
+        tracking.recentDays(FAIL_RUN_LOOKBACK).map {
+            DayOutcomeRow(it.missed, excused = it.outcome == DayOutcome.SHIELDED.name || it.outcome == DayOutcome.RESTED.name)
+        },
+    )
 
     /** How [quest] is checked, given whether Gym is linked right now. */
     suspend fun checkOf(quest: Quest): AutoCheck? = QuestChecks.of(quest, gymConnected = meta.get(GYM_LINKED_KEY) != null)
@@ -528,5 +545,6 @@ class LifeRepository(
         const val TEST_DAY_KEY = "test_day_quest"
         const val STREAK_KEY = "streak"
         const val GYM_LINKED_KEY = "gym_linked"
+        const val FAIL_RUN_LOOKBACK = 60
     }
 }

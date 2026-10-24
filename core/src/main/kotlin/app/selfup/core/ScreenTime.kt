@@ -6,8 +6,12 @@ import java.time.LocalTime
 
 public enum class UsageKind { RESUMED, PAUSED }
 
-/** One event from Android's usage log: an app came to or left the foreground. */
-public data class UsageEvent(val pkg: String, val at: Instant, val kind: UsageKind)
+/**
+ * One event from Android's usage log: an app came to or left the foreground. [activity] is
+ * the screen inside the app, when the log names it; an app moving between its own screens
+ * logs one screen's pause and the next one's resume, in either order.
+ */
+public data class UsageEvent(val pkg: String, val at: Instant, val kind: UsageKind, val activity: String? = null)
 
 /**
  * Screen-time rules. The System reads the phone's own usage log, so scrolling and
