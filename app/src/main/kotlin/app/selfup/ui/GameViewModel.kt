@@ -11,6 +11,8 @@ import app.selfup.data.CompletionResult
 import app.selfup.data.DayCloseReport
 import app.selfup.data.DayQuest
 import app.selfup.data.HealthRepository
+import app.selfup.data.HunterReport
+import app.selfup.data.HunterRepository
 import app.selfup.data.LifeRepository
 import app.selfup.data.NutritionReport
 import app.selfup.focus.FocusReport
@@ -55,6 +57,9 @@ sealed interface GameEvent {
     /** The meal log scored finished days' meal quests. */
     data class NutritionSettled(val report: NutritionReport) : GameEvent
 
+    /** Gold, the weekly dungeon and achievements paid out for finished days. */
+    data class HunterSettled(val report: HunterReport) : GameEvent
+
     /** A tap on a quest the System checks itself. */
     data class Automatic(val quest: Quest, val check: AutoCheck) : GameEvent
 }
@@ -65,6 +70,7 @@ class GameViewModel(
     private val repository: LifeRepository,
     private val focus: FocusRepository? = null,
     private val health: HealthRepository? = null,
+    private val hunter: HunterRepository? = null,
 ) : ViewModel() {
     private val _events = Channel<GameEvent>(Channel.BUFFERED)
     val events: Flow<GameEvent> = _events.receiveAsFlow()
@@ -78,6 +84,8 @@ class GameViewModel(
             health?.settle(repository)?.takeUnless { it.isEmpty }?.let { _events.send(GameEvent.NutritionSettled(it)) }
             val report = repository.closeFinishedDays()
             if (!report.isEmpty) _events.send(GameEvent.DayClosed(report))
+            // Last, once each day's outcome and penalties are final.
+            hunter?.settle()?.takeUnless { it.isEmpty }?.let { _events.send(GameEvent.HunterSettled(it)) }
         }
         .flatMapLatest { day ->
             combine(repository.observeStats(), repository.observeDay(day), repository.observeStreak()) { stats, quests, streak ->

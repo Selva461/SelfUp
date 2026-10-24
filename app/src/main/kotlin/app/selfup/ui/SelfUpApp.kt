@@ -93,6 +93,17 @@ import app.selfup.ai.AiSettings
 import app.selfup.ai.GroqPlanner
 import app.selfup.data.GoalsRepository
 import app.selfup.data.HealthRepository
+import app.selfup.data.HunterRepository
+import app.selfup.data.rankLabel
+import app.selfup.core.Achievement
+import app.selfup.core.Reward
+import app.selfup.ui.hunter.HunterEvent
+import app.selfup.ui.hunter.HunterScreen
+import app.selfup.ui.hunter.HunterTab
+import app.selfup.ui.hunter.HunterViewModel
+import app.selfup.ui.hunter.RewardEditorSheet
+import app.selfup.ui.hunter.dungeonSection
+import app.selfup.ui.hunter.gold
 import app.selfup.data.LifeRepository
 import app.selfup.data.MindRepository
 import app.selfup.data.RecordsRepository
@@ -174,6 +185,8 @@ private object Routes {
     const val GOALS = "goals"
     const val MIND = "mind/{games}"
     fun mind(games: List<MindGame>) = "mind/${games.joinToString(",") { it.key }}"
+    const val HUNTER = "hunter/{tab}"
+    fun hunter(tab: HunterTab) = "hunter/${tab.name}"
     const val STAT = "stat/{key}"
     fun stat(stat: Stat) = "stat/${stat.key}"
 }
@@ -185,8 +198,10 @@ private sealed interface Editing {
 }
 
 @Composable
-fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner, gym: GymSync, focus: FocusRepository, backup: Backup, work: WorkRepository) {
-    val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository, focus, health) } })
+fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner, gym: GymSync, focus: FocusRepository, backup: Backup, work: WorkRepository, hunter: HunterRepository) {
+    val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository, focus, health, hunter) } })
+    val hunterVm: HunterViewModel = viewModel(factory = viewModelFactory { initializer { HunterViewModel(hunter) } })
+    val hunterState by hunterVm.state.collectAsStateWithLifecycle()
     val screenTime by remember(focus) { focus.observeToday() }.collectAsStateWithLifecycle(null)
     val state by game.state.collectAsStateWithLifecycle()
     val allQuests by game.allQuests.collectAsStateWithLifecycle()
@@ -253,6 +268,9 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
     val skillsVm: SkillsViewModel = viewModel(factory = viewModelFactory { initializer { SkillsViewModel(skills) } })
     val skillsState by skillsVm.state.collectAsStateWithLifecycle()
     var masteryUp by remember { mutableStateOf<SkillResult?>(null) }
+    var unlocked by remember { mutableStateOf<List<Achievement>>(emptyList()) }
+    var editingReward by remember { mutableStateOf<Reward?>(null) }
+    var addingReward by remember { mutableStateOf(false) }
     val mindVm: MindViewModel = viewModel(factory = viewModelFactory { initializer { MindViewModel(mind) } })
     val mindState by mindVm.state.collectAsStateWithLifecycle()
 
@@ -276,6 +294,41 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                     val started = if (event.active == 1) "1 goal started" else "${event.active} goals started"
                     val text = if (event.queued > 0) "$started, ${event.queued} queued" else started
                     snackbar.showSnackbar(text, duration = SnackbarDuration.Short)
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(hunterVm) {
+        hunterVm.events.collect { event ->
+            when (event) {
+                is HunterEvent.Unlocked -> {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    unlocked = unlocked + event.achievements
+                }
+                is HunterEvent.Bought -> launch {
+                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                    val extra = if (event.reward.minutes > 0) " +${event.reward.minutes} min on today's budget." else " Enjoy it, you earned it."
+                    snackbar.showSnackbar("Bought: ${event.reward.title}.$extra ${gold(event.balance)} left.", duration = SnackbarDuration.Long)
+                }
+                is HunterEvent.TooPoor -> launch {
+                    haptics.performHapticFeedback(HapticFeedbackType.Reject)
+                    snackbar.showSnackbar("Not enough gold: ${gold(event.short)} short for ${event.reward.title}.", duration = SnackbarDuration.Short)
+                }
+                HunterEvent.DailyLimit -> launch {
+                    snackbar.showSnackbar("That's today's screen-time rewards used. More tomorrow.", duration = SnackbarDuration.Short)
+                }
+                is HunterEvent.RestDeclared -> launch {
+                    haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                    val day = if (event.day == repository.today()) "Today" else event.day.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM"))
+                    snackbar.showSnackbar("$day is a rest day. Misses cost nothing; the streak holds.", duration = SnackbarDuration.Short)
+                }
+                is HunterEvent.RestRefused -> launch {
+                    haptics.performHapticFeedback(HapticFeedbackType.Reject)
+                    snackbar.showSnackbar(event.refusal.message, duration = SnackbarDuration.Long)
+                }
+                is HunterEvent.RestCancelled -> launch {
+                    snackbar.showSnackbar(if (event.ok) "Rest day called off." else "Too late to call that one off.", duration = SnackbarDuration.Short)
                 }
             }
         }
@@ -416,6 +469,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                         }
                         if (count > 0) add("Penalty: missed $quests yesterday, −${report.xpLost} XP. Penalty quests added.")
                         else if (report.xpLost > 0) add("Penalty: −${report.xpLost} XP for missed days.")
+                        if (report.restedDays > 0) add(if (report.restedDays == 1) "Rest day: misses excused." else "${report.restedDays} rest days: misses excused.")
                         if (report.streakLost > 1) add("${report.streakLost}-day streak lost.")
                     }
                     if (lines.isNotEmpty()) {
@@ -441,6 +495,20 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                     }
                     haptics.performHapticFeedback(if (report.failed.isEmpty()) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
                     snackbar.showSnackbar(lines.joinToString(" "), duration = SnackbarDuration.Long)
+                }
+                is GameEvent.HunterSettled -> launch {
+                    val report = event.report
+                    val leveled = report.dungeonChanges.filter { it.leveledUp }
+                    if (leveled.isNotEmpty()) levelUp = leveled
+                    if (report.unlocked.isNotEmpty()) unlocked = unlocked + report.unlocked
+                    val lines = buildList {
+                        report.dungeon?.let { run ->
+                            val xp = run.xp
+                            add("Weekly dungeon: rank ${run.rankLabel}, ${signedXp(xp)} XP, ${gold(run.gold)}.")
+                        }
+                        if (report.dayGold > 0) add("+${gold(report.dayGold)} for yesterday.")
+                    }
+                    if (lines.isNotEmpty()) snackbar.showSnackbar(lines.joinToString(" "), duration = SnackbarDuration.Long)
                 }
                 is GameEvent.Automatic -> launch {
                     snackbar.showSnackbar("The System checks this from the ${event.check.source.lowercase()}. No tap needed.", duration = SnackbarDuration.Short)
@@ -504,7 +572,9 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                             onComplete = complete,
                             onEdit = edit,
                             onStatClick = { nav.navigate(Routes.stat(it)) },
+                            title = hunterState?.title?.title,
                             extra = {
+                                dungeonSection(hunterState, onOpen = { nav.navigate(Routes.hunter(it)) })
                                 screenTimeSection(
                                     screenTime,
                                     onAllowUsage = { context.startActivity(UsageReader.settingsIntent()) },
@@ -712,6 +782,22 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                             },
                         )
                     }
+                    composable(Routes.HUNTER, arguments = listOf(navArgument("tab") { type = NavType.StringType })) { entry ->
+                        var tab by remember(entry) {
+                            mutableStateOf(runCatching { HunterTab.valueOf(requireNotNull(entry.arguments?.getString("tab"))) }.getOrDefault(HunterTab.DUNGEON))
+                        }
+                        HunterScreen(
+                            overview = hunterState,
+                            tab = tab,
+                            onTab = { tab = it },
+                            onBuy = hunterVm::buy,
+                            onEditReward = { reward -> if (reward == null) addingReward = true else editingReward = reward },
+                            onEquip = hunterVm::equip,
+                            onDeclareRest = hunterVm::declareRest,
+                            onCancelRest = hunterVm::cancelRest,
+                            onBack = { nav.popBackStack() },
+                        )
+                    }
                     composable(Routes.STAT, arguments = listOf(navArgument("key") { type = NavType.StringType })) { entry ->
                         val stat = Stat.fromKey(requireNotNull(entry.arguments?.getString("key")))
                         val vm: StatDetailViewModel = viewModel(
@@ -779,6 +865,16 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                     onDismiss = { masteryUp = null },
                 )
             }
+            unlocked.firstOrNull()?.let { achievement ->
+                CelebrationOverlay(
+                    label = "Title unlocked",
+                    headline = achievement.title,
+                    message = "${achievement.description}\n${achievement.tier.displayName} · +${gold(achievement.tier.gold)}",
+                    accent = SystemColors.Gold,
+                    key = achievement.id,
+                    onDismiss = { unlocked = unlocked.drop(1) },
+                )
+            }
             levelUp?.let { changes -> LevelUpOverlay(changes, onDismiss = { levelUp = null }) }
         }
     }
@@ -795,6 +891,25 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                 editing = null
             },
             onDismiss = { editing = null },
+        )
+    }
+
+    if (addingReward || editingReward != null) {
+        RewardEditorSheet(
+            initial = editingReward,
+            onSave = {
+                hunterVm.saveReward(it)
+                addingReward = false
+                editingReward = null
+            },
+            onDelete = {
+                hunterVm.deleteReward(it)
+                editingReward = null
+            },
+            onDismiss = {
+                addingReward = false
+                editingReward = null
+            },
         )
     }
 

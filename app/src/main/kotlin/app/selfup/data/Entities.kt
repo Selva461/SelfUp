@@ -292,6 +292,7 @@ object XpReason {
     /** A checked quest's XP moved because its verdict changed (a gym session that grew). */
     const val RESCORE = "rescore"
     const val WORK = "work"
+    const val DUNGEON = "dungeon"
 }
 
 /** How each closed quest day went, one row per day: the streak's audit trail. */
@@ -352,3 +353,82 @@ object FocusEventKind {
     const val BONUS = "bonus"
     const val WARNED = "warned"
 }
+
+/** A day declared as rest ahead of time (see [app.selfup.core.RestDays]). */
+@Entity(tableName = "rest_day")
+data class RestDayEntity(
+    @PrimaryKey val epochDay: Long,
+    val declaredAtMillis: Long,
+)
+
+/**
+ * Append-only gold ledger; the balance is the sum. [ref] names what paid or was bought,
+ * such as "day:20385", "dungeon:20380", "ach:streak_7" or "buy:12", and is unique so a
+ * settlement that runs twice can't pay twice.
+ */
+@Entity(tableName = "gold_event", indices = [Index(value = ["ref"], unique = true), Index("epochDay")])
+data class GoldEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val delta: Int,
+    /** One of [GoldReason]. */
+    val reason: String,
+    val ref: String,
+    val epochDay: Long,
+    val atMillis: Long,
+)
+
+object GoldReason {
+    /** XP earned before gold existed, converted once. */
+    const val START = "start"
+    const val DAY = "day"
+    const val DUNGEON = "dungeon"
+    const val ACHIEVEMENT = "achievement"
+    const val PURCHASE = "purchase"
+}
+
+/** A reward in the shop, priced by you. Deleting one archives it so purchase history keeps its name. */
+@Entity(tableName = "reward")
+data class RewardEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val title: String,
+    val price: Int,
+    /** A [app.selfup.core.RewardKind] key. */
+    val kind: String,
+    val minutes: Int,
+    val createdAtMillis: Long,
+    val archived: Boolean = false,
+)
+
+/** One reward bought, copied as it was at the time. */
+@Entity(tableName = "purchase", indices = [Index("epochDay")])
+data class PurchaseEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val rewardId: Long?,
+    val title: String,
+    val price: Int,
+    val kind: String,
+    val minutes: Int,
+    val epochDay: Long,
+    val atMillis: Long,
+)
+
+/** A settled weekly dungeon. [detail] holds each objective as "clear=4/5 train=3/4 …". */
+@Entity(tableName = "dungeon_run")
+data class DungeonRunEntity(
+    @PrimaryKey val weekStartEpochDay: Long,
+    val detail: String,
+    val performance: Double,
+    /** A [app.selfup.core.DungeonRank] name. */
+    val rank: String,
+    val xp: Int,
+    val gold: Int,
+    val settledAtMillis: Long,
+)
+
+/** An unlocked achievement and the gold it paid. */
+@Entity(tableName = "achievement")
+data class AchievementEntity(
+    @PrimaryKey val id: String,
+    val unlockedAtMillis: Long,
+    val gold: Int,
+)

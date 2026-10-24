@@ -26,6 +26,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AutoCheckEntity::class,
         GymSessionScoreEntity::class,
         WorkLogEntity::class,
+        RestDayEntity::class,
+        GoldEventEntity::class,
+        RewardEntity::class,
+        PurchaseEntity::class,
+        DungeonRunEntity::class,
+        AchievementEntity::class,
     ],
     version = SelfUpDatabase.VERSION,
     exportSchema = true,
@@ -42,9 +48,10 @@ abstract class SelfUpDatabase : RoomDatabase() {
     abstract fun goalDao(): GoalDao
     abstract fun trackingDao(): TrackingDao
     abstract fun workDao(): WorkDao
+    abstract fun hunterDao(): HunterDao
 
     companion object {
-        const val VERSION = 10
+        const val VERSION = 11
         const val NAME = "selfup.db"
 
         fun create(context: Context): SelfUpDatabase =
@@ -165,6 +172,37 @@ abstract class SelfUpDatabase : RoomDatabase() {
                             "`epochDay` INTEGER NOT NULL, `atMillis` INTEGER NOT NULL, `code` TEXT NOT NULL)",
                     )
                     db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_work_log_fingerprint` ON `work_log` (`fingerprint`)")
+                }
+            },
+            object : Migration(10, 11) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("CREATE TABLE IF NOT EXISTS `rest_day` (`epochDay` INTEGER NOT NULL, `declaredAtMillis` INTEGER NOT NULL, PRIMARY KEY(`epochDay`))")
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `gold_event` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `delta` INTEGER NOT NULL, " +
+                            "`reason` TEXT NOT NULL, `ref` TEXT NOT NULL, `epochDay` INTEGER NOT NULL, `atMillis` INTEGER NOT NULL)",
+                    )
+                    db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_gold_event_ref` ON `gold_event` (`ref`)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_gold_event_epochDay` ON `gold_event` (`epochDay`)")
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `reward` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, " +
+                            "`price` INTEGER NOT NULL, `kind` TEXT NOT NULL, `minutes` INTEGER NOT NULL, `createdAtMillis` INTEGER NOT NULL, " +
+                            "`archived` INTEGER NOT NULL)",
+                    )
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `purchase` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `rewardId` INTEGER, " +
+                            "`title` TEXT NOT NULL, `price` INTEGER NOT NULL, `kind` TEXT NOT NULL, `minutes` INTEGER NOT NULL, " +
+                            "`epochDay` INTEGER NOT NULL, `atMillis` INTEGER NOT NULL)",
+                    )
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_purchase_epochDay` ON `purchase` (`epochDay`)")
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `dungeon_run` (`weekStartEpochDay` INTEGER NOT NULL, `detail` TEXT NOT NULL, " +
+                            "`performance` REAL NOT NULL, `rank` TEXT NOT NULL, `xp` INTEGER NOT NULL, `gold` INTEGER NOT NULL, " +
+                            "`settledAtMillis` INTEGER NOT NULL, PRIMARY KEY(`weekStartEpochDay`))",
+                    )
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `achievement` (`id` TEXT NOT NULL, `unlockedAtMillis` INTEGER NOT NULL, " +
+                            "`gold` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+                    )
                 }
             },
         )

@@ -55,6 +55,15 @@ import app.selfup.ui.system.LocalBlurLayers
 import app.selfup.ui.goals.GoalsScreen
 import app.selfup.ui.goals.planSection
 import app.selfup.ui.home.HomeScreen
+import app.selfup.core.DungeonDay
+import app.selfup.core.Dungeons
+import app.selfup.core.Gold
+import app.selfup.core.HunterFacts
+import app.selfup.data.HunterOverview
+import app.selfup.data.PurchaseEntity
+import app.selfup.ui.hunter.HunterScreen
+import app.selfup.ui.hunter.HunterTab
+import app.selfup.ui.hunter.dungeonSection
 import app.selfup.ui.log.LogScreen
 import app.selfup.ui.log.LogState
 import app.selfup.ui.mind.MindState
@@ -125,11 +134,27 @@ class ScreenshotTest {
         SystemTab("log", "Log", Icons.Filled.Edit),
     )
 
+    private val hunter = run {
+        val monday = Dungeons.weekStart(today)
+        val days = (0L..2L).map { DungeonDay(monday.plusDays(it), clear = it != 1L, trained = true, studied = it == 0L, scrollMinutes = if (it == 2L) 25 else 6) }
+        HunterOverview(
+            today = today,
+            gold = 1_240,
+            dungeon = Dungeons.progress(monday, days),
+            facts = HunterFacts(bestStreak = 14, clearDays = 22, personalBests = 4, quizzes = 31, mindGames = 12, lowScrollDays = 5),
+            unlocked = mapOf("streak_3" to 0L, "streak_7" to 0L, "pr_1" to 0L, "quiz_25" to 0L),
+            rewards = Gold.defaultRewards.mapIndexed { i, r -> r.copy(id = i + 1L) },
+            purchases = listOf(PurchaseEntity(1, 2, "Order in or eat out", 300, "custom", 0, today.toEpochDay() - 2, 0)),
+            restDays = setOf(today.plusDays(3)),
+        )
+    }
+
     private val padding = PaddingValues(top = 32.dp, bottom = SystemTabBarHeight + 34.dp)
 
     @Test
     fun home() = shoot("01-home", tab = "home") {
-        HomeScreen(todayState, padding, onComplete = {}, onEdit = {}, onStatClick = {}, extra = {
+        HomeScreen(todayState, padding, onComplete = {}, onEdit = {}, onStatClick = {}, title = "Persistent", extra = {
+            dungeonSection(hunter, onOpen = {})
             screenTimeSection(
                 ScreenToday(hasAccess = true, blockerOn = true, minutes = 22, apps = listOf("Instagram" to 14, "YouTube" to 8)),
                 onAllowUsage = {},
@@ -193,6 +218,22 @@ class ScreenshotTest {
         HomeScreen(todayState, padding, onComplete = {}, onEdit = {}, onStatClick = {})
         LevelUpOverlay(listOf(StatChange(Stat.STRENGTH, 20, 4, 5)), onDismiss = {})
     }
+
+    @Test
+    fun hunterDungeon() = shoot("09-hunter-dungeon") { hunterScreen(HunterTab.DUNGEON) }
+
+    @Test
+    fun hunterShop() = shoot("10-hunter-shop") { hunterScreen(HunterTab.SHOP) }
+
+    @Test
+    fun hunterTitles() = shoot("11-hunter-titles") { hunterScreen(HunterTab.TITLES) }
+
+    @Test
+    fun hunterRest() = shoot("12-hunter-rest") { hunterScreen(HunterTab.REST) }
+
+    @Composable
+    private fun hunterScreen(tab: HunterTab) =
+        HunterScreen(hunter, tab, onTab = {}, onBuy = {}, onEditReward = {}, onEquip = {}, onDeclareRest = {}, onCancelRest = {}, onBack = {})
 
     private fun shoot(name: String, tab: String? = null, content: @Composable () -> Unit) {
         compose.mainClock.autoAdvance = false

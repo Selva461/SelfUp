@@ -31,6 +31,9 @@ public enum class DayOutcome {
 
     /** Misses, but a shield absorbed them: no penalty and the streak holds. */
     SHIELDED,
+
+    /** A rest day declared in advance (see [RestDays]): misses cost nothing and the streak holds without growing. */
+    RESTED,
     BROKEN,
 }
 
@@ -38,7 +41,11 @@ public object Streaks {
     public const val SHIELD_EVERY: Int = 7
     public const val MAX_SHIELDS: Int = 2
 
-    public fun close(state: StreakState, due: Int, missed: Int): Pair<StreakState, DayOutcome> {
+    /**
+     * Settles one day. A [rested] day that was cleared anyway still counts as clear; one with
+     * misses is excused without spending a shield.
+     */
+    public fun close(state: StreakState, due: Int, missed: Int, rested: Boolean = false): Pair<StreakState, DayOutcome> {
         require(missed in 0..due) { "Missed $missed of $due due quests" }
         return when {
             due == 0 -> state to DayOutcome.EMPTY
@@ -51,6 +58,7 @@ public object Streaks {
                     shields = minOf(MAX_SHIELDS, state.shields + earned),
                 ) to DayOutcome.CLEAR
             }
+            rested -> state to DayOutcome.RESTED
             state.shields > 0 -> state.copy(shields = state.shields - 1) to DayOutcome.SHIELDED
             else -> state.copy(current = 0) to DayOutcome.BROKEN
         }

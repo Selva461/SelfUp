@@ -51,6 +51,8 @@ fun HomeScreen(
     onComplete: (Quest) -> Unit,
     onEdit: (Quest) -> Unit,
     onStatClick: (Stat) -> Unit,
+    /** The worn achievement title; the rank title when null. */
+    title: String? = null,
     extra: LazyListScope.() -> Unit = {},
 ) {
     LazyColumn(
@@ -68,7 +70,7 @@ fun HomeScreen(
                 stats = state.stats,
                 overallLevel = state.overallLevel,
                 fields = listOf(
-                    "Title" to playerTitle(state.stats),
+                    "Title" to (title ?: playerTitle(state.stats)),
                     "Day" to (state.day?.format(dayFormat) ?: "–"),
                     "Quests" to "${state.doneCount} / ${state.quests.size}",
                     "Streak" to streakText(state.streak),
