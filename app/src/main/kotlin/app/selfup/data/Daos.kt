@@ -283,3 +283,158 @@ interface GoalDao {
     @Query("DELETE FROM goal WHERE id = :id")
     suspend fun delete(id: Long)
 }
+
+/** Rest days, gold, the shop, dungeons and achievements, plus the counts achievements read. */
+@Dao
+interface HunterDao {
+    @Query("SELECT * FROM rest_day ORDER BY epochDay")
+    fun observeRestDays(): Flow<List<RestDayEntity>>
+
+    @Query("SELECT epochDay FROM rest_day")
+    suspend fun restDays(): List<Long>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertRestDay(day: RestDayEntity)
+
+    @Query("DELETE FROM rest_day WHERE epochDay = :epochDay")
+    suspend fun deleteRestDay(epochDay: Long)
+
+    @Query("SELECT COALESCE(SUM(delta), 0) FROM gold_event")
+    fun observeGold(): Flow<Int>
+
+    @Query("SELECT COALESCE(SUM(delta), 0) FROM gold_event")
+    suspend fun gold(): Int
+
+    /** Returns -1 when [event]'s ref already paid. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertGold(event: GoldEventEntity): Long
+
+    @Query("SELECT * FROM gold_event ORDER BY atMillis DESC, id DESC LIMIT :limit")
+    fun observeRecentGold(limit: Int): Flow<List<GoldEventEntity>>
+
+    @Query("SELECT * FROM reward WHERE archived = 0 ORDER BY price, id")
+    fun observeRewards(): Flow<List<RewardEntity>>
+
+    @Query("SELECT * FROM reward WHERE id = :id")
+    suspend fun reward(id: Long): RewardEntity?
+
+    @Query("SELECT COUNT(*) FROM reward")
+    suspend fun rewardCount(): Int
+
+    @Insert
+    suspend fun insertReward(reward: RewardEntity): Long
+
+    @Update
+    suspend fun updateReward(reward: RewardEntity)
+
+    @Insert
+    suspend fun insertPurchase(purchase: PurchaseEntity): Long
+
+    @Query("SELECT * FROM purchase WHERE epochDay = :epochDay")
+    suspend fun purchasesOn(epochDay: Long): List<PurchaseEntity>
+
+    @Query("SELECT * FROM purchase ORDER BY atMillis DESC LIMIT :limit")
+    fun observePurchases(limit: Int): Flow<List<PurchaseEntity>>
+
+    @Query("SELECT * FROM dungeon_run WHERE weekStartEpochDay = :weekStart")
+    suspend fun dungeonRun(weekStart: Long): DungeonRunEntity?
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertDungeonRun(run: DungeonRunEntity): Long
+
+    @Query("SELECT * FROM dungeon_run ORDER BY weekStartEpochDay DESC LIMIT :limit")
+    fun observeDungeonRuns(limit: Int): Flow<List<DungeonRunEntity>>
+
+    @Query("SELECT * FROM achievement")
+    fun observeAchievements(): Flow<List<AchievementEntity>>
+
+    @Query("SELECT id FROM achievement")
+    suspend fun achievementIds(): List<String>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAchievement(achievement: AchievementEntity): Long
+
+    // Per-day signals for the dungeon, between two quest days inclusive.
+
+    @Query("SELECT * FROM day_record WHERE epochDay BETWEEN :from AND :to")
+    suspend fun dayRecords(from: Long, to: Long): List<DayRecordEntity>
+
+    @Query("SELECT * FROM phone_day WHERE epochDay BETWEEN :from AND :to")
+    suspend fun phoneDays(from: Long, to: Long): List<PhoneDayEntity>
+
+    /** Days with a strength quest done (a scored gym session only completes when it passes) or a passing Gym session. */
+    @Query(
+        """
+        SELECT c.epochDay FROM completion c JOIN quest_stat s ON s.questId = c.questId
+        WHERE s.stat = 'strength' AND c.epochDay BETWEEN :from AND :to
+        UNION
+        SELECT epochDay FROM gym_session_score WHERE performance >= :passAt AND epochDay BETWEEN :from AND :to
+        """,
+    )
+    suspend fun trainingDays(from: Long, to: Long, passAt: Double): List<Long>
+
+    /** Days with a skill quiz, a mind game or logged work. */
+    @Query(
+        """
+        SELECT epochDay FROM skill_event WHERE kind = '${SkillEventKind.QUIZ}' AND epochDay BETWEEN :from AND :to
+        UNION SELECT epochDay FROM mind_score WHERE epochDay BETWEEN :from AND :to
+        UNION SELECT epochDay FROM work_log WHERE epochDay BETWEEN :from AND :to
+        """,
+    )
+    suspend fun studyDays(from: Long, to: Long): List<Long>
+
+    /** Net XP dated [epochDay], leaving out dungeon rewards (those pay their own gold). */
+    @Query("SELECT COALESCE(SUM(delta), 0) FROM xp_event WHERE epochDay = :epochDay AND reason != '${XpReason.DUNGEON}'")
+    suspend fun netXpOn(epochDay: Long): Int
+
+    @Query("SELECT COALESCE(SUM(delta), 0) FROM xp_event WHERE epochDay <= :epochDay")
+    suspend fun netXpThrough(epochDay: Long): Long
+
+    // Counts for achievements.
+
+    @Query("SELECT COUNT(*) FROM day_record WHERE outcome = 'CLEAR'")
+    suspend fun clearDayCount(): Int
+
+    @Query("SELECT COUNT(*) FROM record_entry WHERE xpAwarded > 0")
+    suspend fun personalBestCount(): Int
+
+    @Query(
+        """
+        SELECT COUNT(*) FROM (
+            SELECT c.epochDay FROM completion c JOIN quest_stat s ON s.questId = c.questId WHERE s.stat = 'strength'
+            UNION SELECT epochDay FROM gym_session_score WHERE performance >= :passAt
+        )
+        """,
+    )
+    suspend fun trainingDayCount(passAt: Double): Int
+
+    @Query("SELECT COUNT(*) FROM skill_event WHERE kind = '${SkillEventKind.QUIZ}'")
+    suspend fun quizCount(): Int
+
+    @Query("SELECT COUNT(DISTINCT conceptId) FROM skill_event WHERE kind = '${SkillEventKind.QUIZ}'")
+    suspend fun conceptsQuizzedCount(): Int
+
+    @Query("SELECT COUNT(*) FROM mind_score")
+    suspend fun mindGameCount(): Int
+
+    @Query("SELECT COUNT(*) FROM work_log")
+    suspend fun workLogCount(): Int
+
+    @Query("SELECT COUNT(*) FROM phone_day WHERE entertainmentMillis <= :maxMillis")
+    suspend fun lowScrollDayCount(maxMillis: Long): Int
+
+    @Query("SELECT COUNT(DISTINCT epochDay) FROM auto_check WHERE kind = 'PHONE_OFF' AND xp > 0")
+    suspend fun phoneOffPassCount(): Int
+
+    @Query("SELECT COUNT(*) FROM goal WHERE state = '${GoalState.REACHED}'")
+    suspend fun goalsReachedCount(): Int
+
+    @Query("SELECT COUNT(*) FROM dungeon_run WHERE rank IN ('S', 'A', 'B', 'C')")
+    suspend fun dungeonsClearedCount(): Int
+
+    @Query("SELECT COUNT(*) FROM dungeon_run WHERE rank = 'S'")
+    suspend fun sRankCount(): Int
+
+    @Query("SELECT COUNT(*) FROM purchase")
+    suspend fun purchaseCount(): Int
+}

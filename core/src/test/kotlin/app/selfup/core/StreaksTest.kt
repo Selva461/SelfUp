@@ -46,4 +46,17 @@ class StreaksTest {
         assertEquals(StreakState(), StreakState.decode("5:2:0"))
         assertEquals(StreakState(), StreakState.decode(null))
     }
+
+    @Test
+    fun `a rest day excuses misses without spending a shield`() {
+        val state = StreakState(current = 9, best = 12, shields = 1)
+        assertEquals(state to DayOutcome.RESTED, Streaks.close(state, due = 3, missed = 2, rested = true))
+    }
+
+    @Test
+    fun `a rest day cleared anyway still counts as clear`() {
+        val (next, outcome) = Streaks.close(StreakState(current = 9, best = 12), due = 3, missed = 0, rested = true)
+        assertEquals(DayOutcome.CLEAR, outcome)
+        assertEquals(10, next.current)
+    }
 }

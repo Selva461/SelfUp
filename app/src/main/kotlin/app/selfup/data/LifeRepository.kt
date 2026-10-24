@@ -56,8 +56,10 @@ data class DayCloseReport(
     val shieldsUsed: Int = 0,
     /** The streak that broke, when one did. */
     val streakLost: Int = 0,
+    /** Rest days whose misses were excused. */
+    val restedDays: Int = 0,
 ) {
-    val isEmpty: Boolean get() = missed.isEmpty() && shieldsUsed == 0 && streakLost == 0
+    val isEmpty: Boolean get() = missed.isEmpty() && shieldsUsed == 0 && streakLost == 0 && restedDays == 0
 }
 
 /** What the reminder scheduler needs to know about one quest. */
@@ -103,6 +105,7 @@ class LifeRepository(
     private val xp = db.xpDao()
     private val meta = db.metaDao()
     private val tracking = db.trackingDao()
+    private val hunter = db.hunterDao()
 
     fun today(): LocalDate = dayBoundary.questDay(clock.instant())
 
@@ -433,6 +436,8 @@ class LifeRepository(
         var streak = StreakState.decode(meta.get(STREAK_KEY))
         var shieldsUsed = 0
         var streakLost = 0
+        var restedDays = 0
+        val rest = hunter.restDays().toSet()
 
         var day = lastClosed.plusDays(1)
         while (day.isBefore(today)) {
@@ -441,7 +446,7 @@ class LifeRepository(
             val missed = DailyReset.missed(all, day, done, existed)
             val due = DailyReset.missed(all, day, emptySet(), existed).size
             val before = streak.current
-            val (next, outcome) = Streaks.close(streak, due, missed.size)
+            val (next, outcome) = Streaks.close(streak, due, missed.size, rested = day.toEpochDay() in rest)
             streak = next
             val record = DayRecordEntity(
                 epochDay = day.toEpochDay(),
@@ -454,9 +459,9 @@ class LifeRepository(
                 closedAtMillis = now,
             )
             when (outcome) {
-                DayOutcome.SHIELDED -> {
+                DayOutcome.SHIELDED, DayOutcome.RESTED -> {
                     tracking.putDay(record)
-                    shieldsUsed++
+                    if (outcome == DayOutcome.SHIELDED) shieldsUsed++ else restedDays++
                     day = day.plusDays(1)
                     continue
                 }
@@ -486,7 +491,7 @@ class LifeRepository(
         meta.put(MetaEntity(STREAK_KEY, streak.encode()))
         missedYesterday.forEach { saveQuest(DailyReset.penaltyQuest(it, today)) }
         quests.deletePenaltyQuestsExpiredBefore(today.toEpochDay())
-        DayCloseReport(missedYesterday, xpLost, shieldsUsed, streakLost)
+        DayCloseReport(missedYesterday, xpLost, shieldsUsed, streakLost, restedDays)
     }
 
     /**

@@ -75,10 +75,13 @@ class BlockActivity : ComponentActivity() {
 @Composable
 private fun LockScreen(app: String, focus: FocusRepository, onLeave: () -> Unit, onGrace: () -> Unit) {
     var minutes by remember { mutableStateOf<Int?>(null) }
+    var budget by remember { mutableStateOf(ScreenTime.DAILY_BUDGET_MINUTES) }
     var graceLeft by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(Unit) {
-        minutes = withContext(Dispatchers.IO) { focus.readToday().minutes }
+        val today = withContext(Dispatchers.IO) { focus.readToday() }
+        minutes = today.minutes
+        budget = today.budget
         graceLeft = focus.graceAvailable()
     }
     Box(Modifier.fillMaxSize()) {
@@ -94,10 +97,10 @@ private fun LockScreen(app: String, focus: FocusRepository, onLeave: () -> Unit,
             SystemWindow(title = "Notification", accent = SystemColors.Danger, notice = true) {
                 SystemLine("[$app is locked]")
                 SystemLine(
-                    "Entertainment budget spent: ${minutes ?: "–"} of ${ScreenTime.DAILY_BUDGET_MINUTES} minutes today.",
+                    "Entertainment budget spent: ${minutes ?: "–"} of $budget minutes today.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                MutedText("It unlocks at the next daily reset. Keep tomorrow to ${ScreenTime.FREE_MINUTES} minutes for the full +${ScreenTime.UNDER_BUDGET_XP} Life XP.")
+                MutedText("It unlocks at the next daily reset, or buy more minutes with gold in System's shop. Keep tomorrow to ${ScreenTime.FREE_MINUTES} minutes for the full +${ScreenTime.UNDER_BUDGET_XP} Life XP.")
                 SystemButton("Leave", onClick = onLeave, accent = SystemColors.Danger)
                 if (graceLeft) {
                     SystemButton(

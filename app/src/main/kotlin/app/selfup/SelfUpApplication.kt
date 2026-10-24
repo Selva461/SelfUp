@@ -6,6 +6,7 @@ import app.selfup.ai.GroqPlanner
 import app.selfup.data.Backup
 import app.selfup.data.GoalsRepository
 import app.selfup.data.HealthRepository
+import app.selfup.data.HunterRepository
 import app.selfup.data.LifeRepository
 import app.selfup.data.MindRepository
 import app.selfup.data.RecordsRepository
@@ -47,6 +48,8 @@ class SelfUpApplication : Application() {
     val focus: FocusRepository by lazy {
         FocusRepository(UsageReader(this), repository, database.metaDao(), database.trackingDao(), blockerEnabled = { BlockerService.isEnabled(this) })
     }
+
+    val hunter: HunterRepository by lazy { HunterRepository(database, repository) }
 
     val work: WorkRepository by lazy { WorkRepository(database, repository.clock, repository.dayBoundary) }
 

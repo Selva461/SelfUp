@@ -12,6 +12,7 @@ import app.selfup.core.ReminderPlanner
 import app.selfup.data.AppUsageDayEntity
 import app.selfup.data.FocusEventEntity
 import app.selfup.data.FocusEventKind
+import app.selfup.data.HunterRepository
 import app.selfup.data.MetaDao
 import app.selfup.data.PhoneDayEntity
 import app.selfup.data.TrackingDao
@@ -147,7 +148,7 @@ class FocusRepository(
     suspend fun shouldBlock(pkg: String): Boolean {
         if (pkg !in apps() || !source.hasAccess()) return false
         val used = withContext(Dispatchers.IO) { ScreenTime.minutes(usedToday()) }
-        val block = ScreenTime.shouldBlock(used, clock.instant(), graceUntil())
+        val block = ScreenTime.shouldBlock(used, clock.instant(), graceUntil(), budget())
         if (block) log(FocusEventKind.LOCKED, today().toEpochDay(), pkg = pkg, minutesUsed = used)
         return block
     }
@@ -161,7 +162,7 @@ class FocusRepository(
         val day = today().toEpochDay()
         if (meta.get(WARNED_KEY)?.toLongOrNull() == day) return null
         val used = withContext(Dispatchers.IO) { ScreenTime.minutes(usedToday()) }
-        val left = ScreenTime.DAILY_BUDGET_MINUTES - used
+        val left = budget() - used
         if (left !in 1..ScreenTime.WARN_AT_MINUTES_LEFT) return null
         meta.put(MetaEntity(WARNED_KEY, day.toString()))
         log(FocusEventKind.WARNED, day, pkg = pkg, minutesUsed = used)
@@ -188,14 +189,15 @@ class FocusRepository(
         }
     }.flowOn(Dispatchers.IO)
 
-    fun readToday(): ScreenToday {
-        if (!source.hasAccess()) return ScreenToday(hasAccess = false, blockerOn = blockerEnabled())
+    suspend fun readToday(): ScreenToday {
+        if (!source.hasAccess()) return ScreenToday(hasAccess = false, blockerOn = blockerEnabled(), budget = budget())
         val ms = usedToday()
         val names = ScreenTime.scrollApps
         return ScreenToday(
             hasAccess = true,
             blockerOn = blockerEnabled(),
             minutes = ScreenTime.minutes(ms),
+            budget = budget(),
             apps = ms.entries.sortedByDescending { it.value }
                 .map { (pkg, millis) -> (names[pkg] ?: pkg.substringAfterLast('.')) to (millis / 60_000).toInt() }
                 .filter { it.second > 0 },
@@ -207,6 +209,13 @@ class FocusRepository(
     }
 
     private fun today(): LocalDate = boundary.questDay(clock.instant())
+
+    /**
+     * Today's lock budget: the daily allowance plus any minutes bought in the shop. Only the
+     * lock moves; the Life XP for the day is still judged against the plain allowance.
+     */
+    private suspend fun budget(): Int =
+        ScreenTime.DAILY_BUDGET_MINUTES + HunterRepository.extraMinutes(meta.get(HunterRepository.EXTRA_MINUTES_KEY), today().toEpochDay())
 
     private suspend fun graceDay(): Long? = meta.get(GRACE_KEY)?.substringBefore(':')?.toLongOrNull()
 
