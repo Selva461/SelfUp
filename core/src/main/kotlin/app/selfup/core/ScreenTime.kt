@@ -126,6 +126,24 @@ public object ScreenTime {
     /** Opens after this time count as late-night use. */
     public val LATE_FROM: LocalTime = LocalTime.of(23, 0)
 
+    /**
+     * The app in front after [events], read in log order from [current]. A pause of the app
+     * in front (screen off, or the lock screen) leaves nothing in front, so this returns null.
+     * Packages in [ignore], such as the notification shade or keyboard, pass over an app
+     * without leaving it.
+     */
+    public fun frontApp(events: List<UsageEvent>, current: String?, ignore: Set<String> = emptySet()): String? {
+        var front = current
+        for (event in events) {
+            if (event.pkg in ignore) continue
+            when (event.kind) {
+                UsageKind.RESUMED -> front = event.pkg
+                UsageKind.PAUSED -> if (event.pkg == front) front = null
+            }
+        }
+        return front
+    }
+
     public fun minutes(millis: Map<String, Long>): Int = (millis.values.sum() / 60_000).toInt()
 
     /** The popup warns once a day when this many minutes or fewer are left. */

@@ -110,7 +110,7 @@ class PopupActivity : ComponentActivity() {
 }
 
 @Composable
-private fun Scrim(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+internal fun Scrim(onDismiss: () -> Unit, content: @Composable () -> Unit) {
     val appear = remember { Animatable(0.9f) }
     LaunchedEffect(Unit) { appear.animateTo(1f, spring(dampingRatio = 0.6f, stiffness = 400f)) }
     Box(
@@ -179,7 +179,7 @@ private fun QuestPopup(app: SelfUpApplication, questId: Long, onClose: () -> Uni
 }
 
 @Composable
-private fun BudgetPopup(minutesLeft: Int, onClose: () -> Unit) {
+internal fun BudgetPopup(minutesLeft: Int, onClose: () -> Unit) {
     SystemWindow(title = "Notification", notice = true, accent = SystemColors.Gold) {
         SystemLine("[Entertainment budget almost spent]", color = SystemColors.Gold)
         SystemLine(

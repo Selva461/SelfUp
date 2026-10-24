@@ -13,6 +13,8 @@
     <!-- The app lock runs as a foreground service so it keeps watching between app switches. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Asks once to let the app lock run without battery limits, so the phone doesn't kill it. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Re-arm reminders (and restart the app lock) after a reboot. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Read the Gym app's training log. Gym defines these as dangerous, so Android asks the
@@ -68,7 +70,8 @@
             android:theme="@style/Theme.SelfUp.Popup"
             tools:targetApi="27" />
 
-        <!-- Shown over a locked app; its own task so leaving it never lands back in that app. -->
+        <!-- Opened over a locked app on top of the lock window; its own task so leaving it never
+             lands back in that app. -->
         <activity
             android:name=".focus.BlockActivity"
             android:exported="false"

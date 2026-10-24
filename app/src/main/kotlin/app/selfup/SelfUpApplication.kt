@@ -21,6 +21,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import app.selfup.focus.BlockerService
+import app.selfup.focus.BlockerWatchdog
 import app.selfup.focus.FocusRepository
 import app.selfup.focus.UsageReader
 import kotlinx.coroutines.flow.first
@@ -45,7 +46,7 @@ class SelfUpApplication : Application() {
     val goals: GoalsRepository by lazy { GoalsRepository(database, repository.clock, repository.dayBoundary) }
 
     val focus: FocusRepository by lazy {
-        FocusRepository(UsageReader(this), repository, database.metaDao(), database.trackingDao(), blockerEnabled = { BlockerService.isEnabled(this) })
+        FocusRepository(UsageReader(this), repository, database.metaDao(), database.trackingDao(), blockerEnabled = { BlockerService.isEnabled(this) }, blockerUnrestricted = { BlockerService.isUnrestricted(this) })
     }
 
     val work: WorkRepository by lazy { WorkRepository(database, repository.clock, repository.dayBoundary) }
@@ -82,6 +83,7 @@ class SelfUpApplication : Application() {
         // (editor, completion, undo, notification action) has to remember to.
         appScope.launch { repository.observeReminderInputs().collect(::syncReminders) }
         GymSyncWorker.schedule(this)
+        BlockerWatchdog.schedule(this)
     }
 
     /** One-off re-arm for receivers, which may run before the collector above emits. */
