@@ -32,6 +32,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PurchaseEntity::class,
         DungeonRunEntity::class,
         AchievementEntity::class,
+        DsaProblemEntity::class,
+        DsaAttemptEntity::class,
     ],
     version = SelfUpDatabase.VERSION,
     exportSchema = true,
@@ -49,9 +51,10 @@ abstract class SelfUpDatabase : RoomDatabase() {
     abstract fun trackingDao(): TrackingDao
     abstract fun workDao(): WorkDao
     abstract fun hunterDao(): HunterDao
+    abstract fun dsaDao(): DsaDao
 
     companion object {
-        const val VERSION = 11
+        const val VERSION = 12
         const val NAME = "selfup.db"
 
         fun create(context: Context): SelfUpDatabase =
@@ -203,6 +206,22 @@ abstract class SelfUpDatabase : RoomDatabase() {
                         "CREATE TABLE IF NOT EXISTS `achievement` (`id` TEXT NOT NULL, `unlockedAtMillis` INTEGER NOT NULL, " +
                             "`gold` INTEGER NOT NULL, PRIMARY KEY(`id`))",
                     )
+                }
+            },
+            object : Migration(11, 12) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `dsa_problem` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `title` TEXT NOT NULL, " +
+                            "`topic` TEXT NOT NULL, `difficulty` TEXT NOT NULL, `url` TEXT, `createdAtMillis` INTEGER NOT NULL)",
+                    )
+                    db.execSQL(
+                        "CREATE TABLE IF NOT EXISTS `dsa_attempt` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `problemId` INTEGER NOT NULL, " +
+                            "`outcome` TEXT NOT NULL, `minutes` INTEGER, `performance` REAL NOT NULL, `xp` INTEGER NOT NULL, " +
+                            "`stageAfter` INTEGER NOT NULL, `epochDay` INTEGER NOT NULL, `atMillis` INTEGER NOT NULL, " +
+                            "FOREIGN KEY(`problemId`) REFERENCES `dsa_problem`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                    )
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_dsa_attempt_problemId` ON `dsa_attempt` (`problemId`)")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS `index_dsa_attempt_epochDay` ON `dsa_attempt` (`epochDay`)")
                 }
             },
         )

@@ -18,6 +18,9 @@ public data class HunterFacts(
     val dungeonsCleared: Int = 0,
     val sRankDungeons: Int = 0,
     val purchases: Int = 0,
+    /** DSA problems solved alone at least once, and ones mastered on the re-solve ladder. */
+    val dsaSolved: Int = 0,
+    val dsaMastered: Int = 0,
 ) {
     val totalLevel: Int get() = Stat.launchSet.sumOf { levels[it] ?: 1 }
     val lowestLevel: Int get() = Stat.launchSet.minOf { levels[it] ?: 1 }
@@ -86,6 +89,8 @@ public object Achievements {
         Achievement("quiz_25", "Student", "Take 25 skill quizzes", Tier.BRONZE, AchievementGroup.MIND, 25) { it.quizzes },
         Achievement("concepts_30", "Scholar", "Study 30 different concepts", Tier.SILVER, AchievementGroup.MIND, 30) { it.conceptsStudied },
         Achievement("mind_30", "Sharp Mind", "Play 30 mind games", Tier.BRONZE, AchievementGroup.MIND, 30) { it.mindGames },
+        Achievement("dsa_25", "Problem Solver", "Solve 25 DSA problems on your own", Tier.SILVER, AchievementGroup.MIND, 25) { it.dsaSolved },
+        Achievement("dsa_master_10", "Pattern Master", "Master 10 DSA problems (pass the 14-day re-solve)", Tier.GOLD, AchievementGroup.MIND, 10) { it.dsaMastered },
         Achievement("work_5", "Builder", "Log 5 pieces of work you built", Tier.SILVER, AchievementGroup.MIND, 5) { it.workLogs },
 
         Achievement("scroll_7", "Monk Mode", "Keep entertainment to ${Dungeons.LOW_SCROLL_MINUTES} min on 7 days", Tier.BRONZE, AchievementGroup.FOCUS, 7) { it.lowScrollDays },

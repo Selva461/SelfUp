@@ -4,6 +4,9 @@ import androidx.room.withTransaction
 import app.selfup.core.Achievement
 import app.selfup.core.Achievements
 import app.selfup.core.DayOutcome
+import app.selfup.core.Dsa
+import app.selfup.core.DsaAttempt
+import app.selfup.core.DsaOutcome
 import app.selfup.core.DungeonDay
 import app.selfup.core.DungeonRank
 import app.selfup.core.DungeonWeek
@@ -227,6 +230,9 @@ class HunterRepository(
 
     private suspend fun facts(totals: Map<Stat, Long>): HunterFacts {
         val streak = StreakState.decode(meta.get(STREAK_KEY))
+        val dsa = db.dsaDao().allAttempts().groupBy { it.problemId }.values.map { attempts ->
+            Dsa.replay(attempts.map { DsaAttempt(LocalDate.ofEpochDay(it.epochDay), DsaOutcome.fromKey(it.outcome), it.minutes) })
+        }
         return HunterFacts(
             bestStreak = maxOf(streak.best, streak.current),
             clearDays = hunter.clearDayCount(),
@@ -243,6 +249,8 @@ class HunterRepository(
             dungeonsCleared = hunter.dungeonsClearedCount(),
             sRankDungeons = hunter.sRankCount(),
             purchases = hunter.purchaseCount(),
+            dsaSolved = dsa.count { it.solvedAlone },
+            dsaMastered = dsa.count { it.mastered },
         )
     }
 

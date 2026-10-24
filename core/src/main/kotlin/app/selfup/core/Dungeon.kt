@@ -17,7 +17,7 @@ public enum class DungeonObjective(
 ) {
     CLEAR_DAYS("clear", "Clear days", "every daily quest done", 5, Stat.LIFE, restLowers = true),
     TRAINING("train", "Training days", "a gym session or strength quest done", 4, Stat.STRENGTH, restLowers = true),
-    STUDY("study", "Study days", "a skill quiz, mind game or logged work", 4, Stat.TECHNICAL, restLowers = true),
+    STUDY("study", "Study days", "a skill quiz, mind game, DSA problem or logged work", 4, Stat.TECHNICAL, restLowers = true),
     LOW_SCROLL("focus", "Low-scroll days", "${Dungeons.LOW_SCROLL_MINUTES} min or less in entertainment apps", 5, Stat.LIFE, restLowers = false),
     ;
 

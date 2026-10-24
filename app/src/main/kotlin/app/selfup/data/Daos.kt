@@ -373,12 +373,13 @@ interface HunterDao {
     )
     suspend fun trainingDays(from: Long, to: Long, passAt: Double): List<Long>
 
-    /** Days with a skill quiz, a mind game or logged work. */
+    /** Days with a skill quiz, a mind game, logged work or a DSA problem. */
     @Query(
         """
         SELECT epochDay FROM skill_event WHERE kind = '${SkillEventKind.QUIZ}' AND epochDay BETWEEN :from AND :to
         UNION SELECT epochDay FROM mind_score WHERE epochDay BETWEEN :from AND :to
         UNION SELECT epochDay FROM work_log WHERE epochDay BETWEEN :from AND :to
+        UNION SELECT epochDay FROM dsa_attempt WHERE epochDay BETWEEN :from AND :to
         """,
     )
     suspend fun studyDays(from: Long, to: Long): List<Long>
@@ -437,4 +438,37 @@ interface HunterDao {
 
     @Query("SELECT COUNT(*) FROM purchase")
     suspend fun purchaseCount(): Int
+}
+
+@Dao
+interface DsaDao {
+    @Query("SELECT * FROM dsa_problem ORDER BY createdAtMillis, id")
+    fun observeProblems(): Flow<List<DsaProblemEntity>>
+
+    @Query("SELECT * FROM dsa_attempt ORDER BY epochDay, atMillis, id")
+    fun observeAttempts(): Flow<List<DsaAttemptEntity>>
+
+    @Query("SELECT * FROM dsa_attempt ORDER BY epochDay, atMillis, id")
+    suspend fun allAttempts(): List<DsaAttemptEntity>
+
+    @Query("SELECT * FROM dsa_problem WHERE id = :id")
+    suspend fun problem(id: Long): DsaProblemEntity?
+
+    @Query("SELECT * FROM dsa_attempt WHERE problemId = :problemId ORDER BY epochDay, atMillis, id")
+    suspend fun attempts(problemId: Long): List<DsaAttemptEntity>
+
+    @Query("SELECT * FROM dsa_attempt WHERE id = :id")
+    suspend fun attempt(id: Long): DsaAttemptEntity?
+
+    @Insert
+    suspend fun insertProblem(problem: DsaProblemEntity): Long
+
+    @Insert
+    suspend fun insertAttempt(attempt: DsaAttemptEntity): Long
+
+    @Query("DELETE FROM dsa_attempt WHERE id = :id")
+    suspend fun deleteAttempt(id: Long)
+
+    @Query("DELETE FROM dsa_problem WHERE id = :id")
+    suspend fun deleteProblem(id: Long)
 }

@@ -62,6 +62,16 @@ import app.selfup.core.HunterFacts
 import app.selfup.data.HunterOverview
 import app.selfup.data.PurchaseEntity
 import app.selfup.ui.hunter.HunterScreen
+import app.selfup.core.DsaTopic
+import app.selfup.data.DsaAttemptEntity
+import app.selfup.data.DsaOverview
+import app.selfup.data.DsaProblemEntity
+import app.selfup.data.DsaProblemView
+import app.selfup.core.Dsa
+import app.selfup.core.DsaAttempt
+import app.selfup.core.DsaOutcome
+import app.selfup.ui.dsa.DsaScreen
+import app.selfup.ui.dsa.dsaSection
 import app.selfup.ui.hunter.HunterTab
 import app.selfup.ui.hunter.dungeonSection
 import app.selfup.ui.log.LogScreen
@@ -149,6 +159,26 @@ class ScreenshotTest {
         )
     }
 
+    private val dsa = run {
+        fun problem(id: Long, title: String, topic: DsaTopic, difficulty: String, vararg daysAgo: Long): DsaProblemView {
+            val attempts = daysAgo.map { DsaAttemptEntity(0, id, "alone", 20, 1.0, 10, 1, today.toEpochDay() - it, 0) }
+            return DsaProblemView(
+                DsaProblemEntity(id, title, topic.key, difficulty, null, 0),
+                Dsa.replay(attempts.map { DsaAttempt(java.time.LocalDate.ofEpochDay(it.epochDay), DsaOutcome.ALONE, it.minutes) }),
+                attempts,
+            )
+        }
+        DsaOverview(
+            today,
+            listOf(
+                problem(1, "Two Sum", DsaTopic.ARRAYS, "easy", 20, 17, 10),
+                problem(2, "Group Anagrams", DsaTopic.ARRAYS, "medium", 4),
+                problem(3, "Valid Palindrome", DsaTopic.TWO_POINTERS, "easy", 3),
+                problem(4, "Longest Substring Without Repeating", DsaTopic.SLIDING_WINDOW, "medium", 1),
+            ),
+        )
+    }
+
     private val padding = PaddingValues(top = 32.dp, bottom = SystemTabBarHeight + 34.dp)
 
     @Test
@@ -181,6 +211,7 @@ class ScreenshotTest {
             sessionGames = MindGame.entries.take(3),
         )
         SkillsScreen(SkillsState(today = today), padding, onStart = {}, onOpenPack = {}, extra = {
+            dsaSection(dsa, onLog = {}, onProblem = {}, onOpen = {})
             mindSection(mind, onSession = {}, onGame = {})
         })
     }
@@ -230,6 +261,9 @@ class ScreenshotTest {
 
     @Test
     fun hunterRest() = shoot("12-hunter-rest") { hunterScreen(HunterTab.REST) }
+
+    @Test
+    fun dsaTracker() = shoot("13-dsa") { DsaScreen(dsa, onLog = {}, onProblem = {}, onBack = {}) }
 
     @Composable
     private fun hunterScreen(tab: HunterTab) =
