@@ -185,6 +185,14 @@ class FocusRepository(
         return true
     }
 
+    /** Logs one of the System's orders or how it was answered (see [FocusEventKind]). */
+    suspend fun record(kind: String, questId: Long? = null) =
+        log(kind, today().toEpochDay(), questId = questId, minutesUsed = runCatching { ScreenTime.minutes(usedToday()) }.getOrNull())
+
+    /** How many [kind] events were logged today, for [questId] only when it is given. */
+    suspend fun countToday(kind: String, questId: Long? = null): Int =
+        tracking.focusEventsOn(today().toEpochDay()).count { it.kind == kind && (questId == null || it.questId == questId) }
+
     /** Re-reads today's use every minute while collected. */
     fun observeToday(): Flow<ScreenToday> = flow {
         while (true) {

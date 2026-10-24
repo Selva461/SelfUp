@@ -9,12 +9,6 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,16 +17,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import app.selfup.SelfUpApplication
+import app.selfup.alert.AlertFrame
+import app.selfup.core.Drill
 import app.selfup.core.ScreenTime
 import app.selfup.ui.components.MutedText
 import app.selfup.ui.components.SystemButton
 import app.selfup.ui.components.SystemLine
-import app.selfup.ui.components.SystemWindow
-import app.selfup.ui.system.SystemBackground
 import app.selfup.ui.theme.SelfUpTheme
 import app.selfup.ui.theme.SystemColors
 import kotlinx.coroutines.Dispatchers
@@ -73,7 +64,7 @@ class BlockActivity : ComponentActivity() {
 }
 
 @Composable
-internal fun LockScreen(app: String, focus: FocusRepository, onLeave: () -> Unit, onGrace: () -> Unit) {
+fun LockScreen(app: String, focus: FocusRepository, waiting: Int = 0, onLeave: () -> Unit, onGrace: () -> Unit) {
     var minutes by remember { mutableStateOf<Int?>(null) }
     var budget by remember { mutableStateOf(ScreenTime.DAILY_BUDGET_MINUTES) }
     var graceLeft by remember { mutableStateOf(false) }
@@ -84,33 +75,22 @@ internal fun LockScreen(app: String, focus: FocusRepository, onLeave: () -> Unit
         budget = today.budget
         graceLeft = focus.graceAvailable()
     }
-    Box(Modifier.fillMaxSize()) {
-        SystemBackground(accent = SystemColors.Danger)
-        Column(
-            Modifier
-                .fillMaxSize()
-                .safeDrawingPadding()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            SystemWindow(title = "Notification", accent = SystemColors.Danger, notice = true) {
-                SystemLine("[$app is locked]")
-                SystemLine(
-                    "Entertainment budget spent: ${minutes ?: "–"} of $budget minutes today.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                MutedText("It unlocks at the next daily reset, or buy more minutes with gold in System's shop. Keep tomorrow to ${ScreenTime.FREE_MINUTES} minutes for the full +${ScreenTime.UNDER_BUDGET_XP} Life XP.")
-                SystemButton("Leave", onClick = onLeave, accent = SystemColors.Danger)
-                if (graceLeft) {
-                    SystemButton(
-                        "${ScreenTime.GRACE_MINUTES} more minutes (once a day)",
-                        onClick = { scope.launch { if (focus.useGrace()) onGrace() } },
-                        accent = SystemColors.TextMuted,
-                        filled = false,
-                    )
-                }
-            }
+    val seed = remember { System.currentTimeMillis() / 60_000 }
+    AlertFrame("Lockdown", waiting = waiting) {
+        SystemLine("[$app is locked]", color = SystemColors.Danger, style = MaterialTheme.typography.titleLarge)
+        SystemLine(
+            Drill.lockdown(app, minutes ?: budget, budget, seed),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        MutedText("Locked until the daily reset. More minutes cost gold in the shop, and gold has to be earned first.")
+        SystemButton("Close $app", onClick = onLeave, accent = SystemColors.Danger)
+        if (graceLeft) {
+            SystemButton(
+                "Beg for ${ScreenTime.GRACE_MINUTES} minutes (once a day)",
+                onClick = { scope.launch { if (focus.useGrace()) onGrace() } },
+                accent = SystemColors.TextMuted,
+                filled = false,
+            )
         }
     }
 }

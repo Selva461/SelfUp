@@ -2,7 +2,9 @@ package app.selfup
 
 import android.app.Application
 import app.selfup.ai.AiSettings
+import app.selfup.alert.AlertCenter
 import app.selfup.ai.GroqPlanner
+import app.selfup.core.Enforcer
 import app.selfup.data.Backup
 import app.selfup.data.GoalsRepository
 import app.selfup.data.HealthRepository
@@ -77,6 +79,9 @@ class SelfUpApplication : Application() {
 
     private val reminders by lazy { ReminderScheduler(this) }
 
+    /** Every full-screen System alert goes through here, one on screen at a time. */
+    val alerts: AlertCenter by lazy { AlertCenter(this) }
+
     /** Pulls from Gym now, off the main thread. Called whenever SelfUp comes to the foreground. */
     fun syncGym() {
         appScope.launch(Dispatchers.IO) { gym.sync() }
@@ -95,6 +100,10 @@ class SelfUpApplication : Application() {
     /** One-off re-arm for receivers, which may run before the collector above emits. */
     suspend fun syncRemindersNow() = syncReminders(repository.observeReminderInputs().first())
 
-    private fun syncReminders(inputs: List<ReminderInput>) =
-        reminders.sync(inputs, repository.dayBoundary, repository.clock.instant())
+    private fun syncReminders(inputs: List<ReminderInput>) {
+        val now = repository.clock.instant()
+        reminders.sync(inputs, repository.dayBoundary, now)
+        // The nag decides when it fires whether anything is still open, so it is always armed.
+        reminders.armNag(Enforcer.next(now, repository.dayBoundary))
+    }
 }

@@ -65,6 +65,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -76,6 +78,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import app.selfup.core.CompletionInput
+import app.selfup.core.Drill
 import app.selfup.core.GoalMeasure
 import app.selfup.core.GoalRules
 import app.selfup.core.Mastery
@@ -121,6 +124,9 @@ import app.selfup.gym.GymStatus
 import app.selfup.gym.GymSync
 import app.selfup.ui.components.CelebrationOverlay
 import app.selfup.ui.components.LevelUpOverlay
+import app.selfup.ui.report.ReportTakeover
+import app.selfup.ui.report.ReportViewModel
+import app.selfup.ui.report.VerdictTakeover
 import app.selfup.ui.components.NumberEntryDialog
 import app.selfup.ui.components.SystemDialog
 import app.selfup.ui.system.SystemBackground
@@ -211,8 +217,20 @@ private sealed interface Editing {
 }
 
 @Composable
-fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner, gym: GymSync, focus: FocusRepository, backup: Backup, work: WorkRepository, hunter: HunterRepository, dsa: DsaRepository) {
+fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner, gym: GymSync, focus: FocusRepository, backup: Backup, work: WorkRepository, hunter: HunterRepository, dsa: DsaRepository, reportRequest: Int = 0) {
     val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository, focus, health, hunter) } })
+    val reportContext = LocalContext.current
+    val reportVm: ReportViewModel = viewModel(
+        factory = viewModelFactory {
+            initializer { ReportViewModel(repository, health, focus, reportContext.getSharedPreferences("report", Context.MODE_PRIVATE)) }
+        },
+    )
+    val report by reportVm.state.collectAsStateWithLifecycle()
+    // Yesterday's failures, read out in full before anything else.
+    var verdict by remember { mutableStateOf<String?>(null) }
+    // Every time the app comes up, whatever is waiting to be reported is asked for in turn.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { reportVm.open() }
+    LaunchedEffect(reportRequest) { if (reportRequest > 0) reportVm.open(force = true) }
     val hunterVm: HunterViewModel = viewModel(factory = viewModelFactory { initializer { HunterViewModel(hunter) } })
     val hunterState by hunterVm.state.collectAsStateWithLifecycle()
     val dsaVm: DsaViewModel = viewModel(factory = viewModelFactory { initializer { DsaViewModel(dsa) } })
@@ -236,16 +254,16 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
         }
     }
 
-    // Reminders pop up as System windows over other apps, which needs "Display over other apps".
-    // Ask once, the first time a quest has a reminder.
+    // Orders, nags and the lockdown take over the screen over other apps, which needs
+    // "Display over other apps". Ask once.
     val prefs = remember { context.getSharedPreferences("ui", Context.MODE_PRIVATE) }
     var askPopups by remember { mutableStateOf(false) }
-    LaunchedEffect(hasReminders) {
-        if (hasReminders && !PopupActivity.canPopUp(context) && !prefs.getBoolean(ASKED_POPUPS, false)) askPopups = true
+    LaunchedEffect(Unit) {
+        if (!PopupActivity.canPopUp(context) && !prefs.getBoolean(ASKED_POPUPS, false)) askPopups = true
     }
     if (askPopups) {
         SystemDialog(
-            title = "Reminder popups",
+            title = "System alerts",
             onDismiss = {
                 askPopups = false
                 prefs.edit().putBoolean(ASKED_POPUPS, true).apply()
@@ -259,7 +277,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
             dismissText = "Not now",
         ) {
             Text(
-                "Let quest reminders appear as a System window over any app, not only as a notification. " +
+                "Orders, nags and the lockdown take over the whole screen, over any app, until you answer them. " +
                     "Turn on \"Display over other apps\" for System.",
                 style = MaterialTheme.typography.bodyMedium,
             )
@@ -497,26 +515,25 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                 is GameEvent.DayClosed -> launch {
                     val report = event.report
                     val count = report.missed.size
-                    val quests = if (count == 1) "1 daily quest" else "$count daily quests"
+                    // Failures get the full-screen verdict; the rest is a passing note.
+                    Drill.verdict(count, report.xpLost, report.streakLost, repository.failRun(), seed = repository.today().toEpochDay())?.let {
+                        haptics.performHapticFeedback(HapticFeedbackType.Reject)
+                        verdict = it
+                    }
                     val lines = buildList {
                         if (report.shieldsUsed > 0) {
-                            add(if (report.shieldsUsed == 1) "A shield blocked a missed day." else "${report.shieldsUsed} shields blocked missed days.")
+                            add(if (report.shieldsUsed == 1) "A shield blocked a missed day. Don't count on it twice." else "${report.shieldsUsed} shields blocked missed days.")
                         }
-                        if (count > 0) add("Penalty: missed $quests yesterday, −${report.xpLost} XP. Penalty quests added.")
-                        else if (report.xpLost > 0) add("Penalty: −${report.xpLost} XP for missed days.")
+                        if (count == 0 && report.xpLost > 0) add("Penalty: −${report.xpLost} XP for missed days.")
                         if (report.restedDays > 0) add(if (report.restedDays == 1) "Rest day: misses excused." else "${report.restedDays} rest days: misses excused.")
-                        if (report.streakLost > 1) add("${report.streakLost}-day streak lost.")
                     }
-                    if (lines.isNotEmpty()) {
-                        haptics.performHapticFeedback(if (count > 0 || report.xpLost > 0) HapticFeedbackType.Reject else HapticFeedbackType.Confirm)
-                        snackbar.showSnackbar(lines.joinToString(" "), duration = SnackbarDuration.Long)
-                    }
+                    if (lines.isNotEmpty()) snackbar.showSnackbar(lines.joinToString(" "), duration = SnackbarDuration.Long)
                 }
                 is GameEvent.FocusSettled -> launch {
                     val report = event.report
                     val lines = buildList {
                         report.verified.forEach { (quest, p) -> add("${quest.title}: ${Performance.label(p).lowercase()} (${percent(p)}).") }
-                        report.failed.forEach { add("${it.title}: failed, phone used after the cutoff.") }
+                        report.failed.forEach { add("${it.title}: failed. You were on your phone after the cutoff.") }
                         if (report.bonusXp != 0) add("Screen time yesterday ${report.usedMinutes} min: ${signedXp(report.bonusXp)} XP Life.")
                     }
                     haptics.performHapticFeedback(if (report.failed.isEmpty() && report.bonusXp >= 0) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
@@ -526,7 +543,7 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                     val report = event.report
                     val lines = buildList {
                         report.verified.forEach { (quest, p) -> add("${quest.title}: ${Performance.label(p).lowercase()} (${percent(p)}).") }
-                        report.failed.forEach { add("${it.title}: not met by what you logged.") }
+                        report.failed.forEach { add("${it.title}: failed. What you ate didn't meet it.") }
                     }
                     haptics.performHapticFeedback(if (report.failed.isEmpty()) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
                     snackbar.showSnackbar(lines.joinToString(" "), duration = SnackbarDuration.Long)
@@ -926,6 +943,13 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
             }
             levelUp?.let { changes -> LevelUpOverlay(changes, onDismiss = { levelUp = null }) }
         }
+    }
+
+    val shownVerdict = verdict
+    val shownReport = report
+    when {
+        shownVerdict != null -> VerdictTakeover(shownVerdict, onDismiss = { verdict = null })
+        shownReport != null -> ReportTakeover(shownReport, reportVm, lastValue = game::lastLoggedValue, onComplete = { quest, value -> game.complete(quest, value) })
     }
 
     editing?.let { current ->
