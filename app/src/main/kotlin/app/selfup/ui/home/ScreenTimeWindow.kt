@@ -18,13 +18,18 @@ import app.selfup.ui.components.SystemWindow
 import app.selfup.ui.theme.SystemColors
 
 /** The screen-time window on Today: entertainment minutes against the budget, and the lock's state. */
-fun LazyListScope.screenTimeSection(state: ScreenToday?, onAllowUsage: () -> Unit, onEnableBlocker: () -> Unit) {
+fun LazyListScope.screenTimeSection(
+    state: ScreenToday?,
+    onAllowUsage: () -> Unit,
+    onEnableBlocker: () -> Unit,
+    onUnrestrictBlocker: () -> Unit = {},
+) {
     if (state == null) return
-    item(key = "screen-time") { ScreenTimeWindow(state, onAllowUsage, onEnableBlocker) }
+    item(key = "screen-time") { ScreenTimeWindow(state, onAllowUsage, onEnableBlocker, onUnrestrictBlocker) }
 }
 
 @Composable
-fun ScreenTimeWindow(state: ScreenToday, onAllowUsage: () -> Unit, onEnableBlocker: () -> Unit) {
+fun ScreenTimeWindow(state: ScreenToday, onAllowUsage: () -> Unit, onEnableBlocker: () -> Unit, onUnrestrictBlocker: () -> Unit = {}) {
     val accent = if (state.spent) SystemColors.Danger else SystemColors.Blue
     SystemWindow(title = "Screen Time", accent = accent) {
         if (!state.hasAccess) {
@@ -49,6 +54,10 @@ fun ScreenTimeWindow(state: ScreenToday, onAllowUsage: () -> Unit, onEnableBlock
             }
             state.spent -> SystemLine("[Budget spent. Entertainment apps are locked until reset.]", color = SystemColors.Danger, style = MaterialTheme.typography.labelMedium)
             else -> SystemLine("[App lock armed: ${state.budget - state.minutes} min left today]", style = MaterialTheme.typography.labelMedium)
+        }
+        if (state.blockerOn && !state.blockerUnrestricted) {
+            MutedText("Your phone can stop the lock in the background to save battery. Let it run so it always catches the budget.")
+            SystemButton("Keep app lock running", onClick = onUnrestrictBlocker, filled = false)
         }
     }
 }

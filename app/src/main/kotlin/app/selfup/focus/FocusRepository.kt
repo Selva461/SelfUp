@@ -33,6 +33,8 @@ import java.util.Locale
 data class ScreenToday(
     val hasAccess: Boolean,
     val blockerOn: Boolean = false,
+    /** Whether the phone lets the lock run without battery limits. */
+    val blockerUnrestricted: Boolean = true,
     val minutes: Int = 0,
     val budget: Int = ScreenTime.DAILY_BUDGET_MINUTES,
     /** Minutes per app, biggest first. */
@@ -68,6 +70,8 @@ class FocusRepository(
     private val boundary: DayBoundary = life.dayBoundary,
     /** Whether the app lock is switched on. */
     private val blockerEnabled: () -> Boolean = { false },
+    /** Whether the lock may run without battery limits. */
+    private val blockerUnrestricted: () -> Boolean = { true },
 ) {
     @Volatile private var cachedApps: Set<String>? = null
 
@@ -195,6 +199,7 @@ class FocusRepository(
         return ScreenToday(
             hasAccess = true,
             blockerOn = blockerEnabled(),
+            blockerUnrestricted = blockerUnrestricted(),
             minutes = ScreenTime.minutes(ms),
             apps = ms.entries.sortedByDescending { it.value }
                 .map { (pkg, millis) -> (names[pkg] ?: pkg.substringAfterLast('.')) to (millis / 60_000).toInt() }

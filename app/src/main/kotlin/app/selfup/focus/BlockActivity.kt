@@ -73,7 +73,7 @@ class BlockActivity : ComponentActivity() {
 }
 
 @Composable
-private fun LockScreen(app: String, focus: FocusRepository, onLeave: () -> Unit, onGrace: () -> Unit) {
+internal fun LockScreen(app: String, focus: FocusRepository, onLeave: () -> Unit, onGrace: () -> Unit) {
     var minutes by remember { mutableStateOf<Int?>(null) }
     var graceLeft by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()

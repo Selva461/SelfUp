@@ -129,4 +129,20 @@ class ScreenTimeTest {
         val scroll = clean + listOf(on(insta, "00:10", next), off(insta, "01:00", next))
         assertEquals(0.0, ScreenTime.offPerformance(scroll, day, cutoff, boundary).performance)
     }
+
+    @Test
+    fun `the front app follows the last resume and clears when it pauses`() {
+        val shade = "com.android.systemui"
+        val launcher = "com.android.launcher"
+        // Opening Instagram from the launcher, then a swipe through its own screens.
+        val open = listOf(off(launcher, "10:00"), on(insta, "10:00"), off(insta, "10:01"), on(insta, "10:01"))
+        assertEquals(insta, ScreenTime.frontApp(open, current = null))
+        // Pulling down the notification shade does not leave the app.
+        assertEquals(insta, ScreenTime.frontApp(listOf(on(shade, "10:02"), off(shade, "10:02")), insta, ignore = setOf(shade)))
+        // Screen off pauses it, so nothing is in front.
+        assertNull(ScreenTime.frontApp(listOf(off(insta, "10:05")), insta))
+        // A pause of some other app leaves the front alone, and no events change nothing.
+        assertEquals(yt, ScreenTime.frontApp(listOf(off(insta, "10:06")), yt))
+        assertEquals(yt, ScreenTime.frontApp(emptyList(), yt))
+    }
 }
