@@ -293,6 +293,7 @@ object XpReason {
     const val RESCORE = "rescore"
     const val WORK = "work"
     const val DUNGEON = "dungeon"
+    const val DSA = "dsa"
 }
 
 /** How each closed quest day went, one row per day: the streak's audit trail. */
@@ -431,4 +432,40 @@ data class AchievementEntity(
     @PrimaryKey val id: String,
     val unlockedAtMillis: Long,
     val gold: Int,
+)
+
+/** A DSA problem you've worked on, such as a NeetCode 150 problem. */
+@Entity(tableName = "dsa_problem")
+data class DsaProblemEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val title: String,
+    /** A [app.selfup.core.DsaTopic] key. */
+    val topic: String,
+    /** A [app.selfup.core.DsaDifficulty] key. */
+    val difficulty: String,
+    val url: String?,
+    val createdAtMillis: Long,
+)
+
+/**
+ * One attempt at a problem, solved from scratch. The problem's place on the re-solve ladder
+ * is replayed from these. [xp] is what it earned, kept so undoing it takes exactly that back.
+ */
+@Entity(
+    tableName = "dsa_attempt",
+    foreignKeys = [ForeignKey(entity = DsaProblemEntity::class, parentColumns = ["id"], childColumns = ["problemId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("problemId"), Index("epochDay")],
+)
+data class DsaAttemptEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val problemId: Long,
+    /** A [app.selfup.core.DsaOutcome] key. */
+    val outcome: String,
+    val minutes: Int?,
+    val performance: Double,
+    val xp: Int,
+    /** The ladder stage this attempt left the problem on. */
+    val stageAfter: Int,
+    val epochDay: Long,
+    val atMillis: Long,
 )

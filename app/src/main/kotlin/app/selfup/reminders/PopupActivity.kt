@@ -37,7 +37,6 @@ import app.selfup.SelfUpApplication
 import app.selfup.core.AutoCheck
 import app.selfup.core.CompletionInput
 import app.selfup.core.Quest
-import app.selfup.core.ScreenTime
 import app.selfup.core.XpRules
 import app.selfup.ui.components.MutedText
 import app.selfup.ui.components.SystemButton
@@ -183,7 +182,7 @@ internal fun BudgetPopup(minutesLeft: Int, onClose: () -> Unit) {
     SystemWindow(title = "Notification", notice = true, accent = SystemColors.Gold) {
         SystemLine("[Entertainment budget almost spent]", color = SystemColors.Gold)
         SystemLine(
-            "$minutesLeft min left of ${ScreenTime.DAILY_BUDGET_MINUTES} today. After that, these apps lock until reset.",
+            "$minutesLeft min of entertainment left today. After that, these apps lock until reset.",
             style = MaterialTheme.typography.bodyMedium,
         )
         SystemButton("Understood", onClick = onClose, accent = SystemColors.Gold)

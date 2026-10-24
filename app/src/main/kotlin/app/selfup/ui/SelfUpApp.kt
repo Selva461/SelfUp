@@ -95,6 +95,12 @@ import app.selfup.data.GoalsRepository
 import app.selfup.data.HealthRepository
 import app.selfup.data.HunterRepository
 import app.selfup.data.rankLabel
+import app.selfup.data.DsaRepository
+import app.selfup.data.DsaProblemView
+import app.selfup.ui.dsa.DsaLogSheet
+import app.selfup.ui.dsa.DsaScreen
+import app.selfup.ui.dsa.DsaViewModel
+import app.selfup.ui.dsa.dsaSection
 import app.selfup.core.Achievement
 import app.selfup.core.Reward
 import app.selfup.ui.hunter.HunterEvent
@@ -185,10 +191,17 @@ private object Routes {
     const val GOALS = "goals"
     const val MIND = "mind/{games}"
     fun mind(games: List<MindGame>) = "mind/${games.joinToString(",") { it.key }}"
+    const val DSA = "dsa"
     const val HUNTER = "hunter/{tab}"
     fun hunter(tab: HunterTab) = "hunter/${tab.name}"
     const val STAT = "stat/{key}"
     fun stat(stat: Stat) = "stat/${stat.key}"
+}
+
+/** What the DSA sheet is open for. */
+private sealed interface DsaSheet {
+    data object NewProblem : DsaSheet
+    data class Resolve(val view: DsaProblemView) : DsaSheet
 }
 
 /** Which quest the editor is open for: none, a new one, or an existing one. */
@@ -198,10 +211,14 @@ private sealed interface Editing {
 }
 
 @Composable
-fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner, gym: GymSync, focus: FocusRepository, backup: Backup, work: WorkRepository, hunter: HunterRepository) {
+fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: RecordsRepository, skills: SkillsRepository, mind: MindRepository, goals: GoalsRepository, ai: AiSettings, planner: GroqPlanner, gym: GymSync, focus: FocusRepository, backup: Backup, work: WorkRepository, hunter: HunterRepository, dsa: DsaRepository) {
     val game: GameViewModel = viewModel(factory = viewModelFactory { initializer { GameViewModel(repository, focus, health, hunter) } })
     val hunterVm: HunterViewModel = viewModel(factory = viewModelFactory { initializer { HunterViewModel(hunter) } })
     val hunterState by hunterVm.state.collectAsStateWithLifecycle()
+    val dsaVm: DsaViewModel = viewModel(factory = viewModelFactory { initializer { DsaViewModel(dsa) } })
+    val dsaState by dsaVm.state.collectAsStateWithLifecycle()
+    // Null: closed. A view: re-solving it. NewProblem: adding one.
+    var dsaSheet by remember { mutableStateOf<DsaSheet?>(null) }
     val screenTime by remember(focus) { focus.observeToday() }.collectAsStateWithLifecycle(null)
     val state by game.state.collectAsStateWithLifecycle()
     val allQuests by game.allQuests.collectAsStateWithLifecycle()
@@ -295,6 +312,24 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                     val text = if (event.queued > 0) "$started, ${event.queued} queued" else started
                     snackbar.showSnackbar(text, duration = SnackbarDuration.Short)
                 }
+            }
+        }
+    }
+
+    LaunchedEffect(dsaVm) {
+        dsaVm.results.collect { result ->
+            val leveled = result.changes.filter { it.leveledUp }
+            if (leveled.isNotEmpty()) levelUp = leveled
+            haptics.performHapticFeedback(if (result.xp >= 0) HapticFeedbackType.Confirm else HapticFeedbackType.Reject)
+            launch {
+                val state = result.state
+                val next = when {
+                    state.mastered -> "Mastered."
+                    else -> state.due?.let { "Re-solve ${it.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM"))}." }.orEmpty()
+                }
+                val text = "${result.title}: ${Performance.label(result.performance).lowercase()}, ${signedXp(result.xp)} XP Technical. $next"
+                val action = snackbar.showSnackbar(text, actionLabel = "Undo", duration = SnackbarDuration.Long)
+                if (action == SnackbarResult.ActionPerformed) dsaVm.undo(result.attemptId)
             }
         }
     }
@@ -631,6 +666,12 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                             },
                             onOpenPack = { nav.navigate(Routes.pack(it.id)) },
                             extra = {
+                                dsaSection(
+                                    dsaState,
+                                    onLog = { dsaSheet = DsaSheet.NewProblem },
+                                    onProblem = { dsaSheet = DsaSheet.Resolve(it) },
+                                    onOpen = { nav.navigate(Routes.DSA) },
+                                )
                                 mindSection(
                                     mindState,
                                     onSession = { nav.navigate(Routes.mind(mindState.sessionGames)) },
@@ -782,6 +823,14 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                             },
                         )
                     }
+                    composable(Routes.DSA) {
+                        DsaScreen(
+                            dsaState,
+                            onLog = { dsaSheet = DsaSheet.NewProblem },
+                            onProblem = { dsaSheet = DsaSheet.Resolve(it) },
+                            onBack = { nav.popBackStack() },
+                        )
+                    }
                     composable(Routes.HUNTER, arguments = listOf(navArgument("tab") { type = NavType.StringType })) { entry ->
                         var tab by remember(entry) {
                             mutableStateOf(runCatching { HunterTab.valueOf(requireNotNull(entry.arguments?.getString("tab"))) }.getOrDefault(HunterTab.DUNGEON))
@@ -891,6 +940,22 @@ fun SelfUpApp(repository: LifeRepository, health: HealthRepository, records: Rec
                 editing = null
             },
             onDismiss = { editing = null },
+        )
+    }
+
+    dsaSheet?.let { sheet ->
+        DsaLogSheet(
+            problem = (sheet as? DsaSheet.Resolve)?.view,
+            suggestedTopic = dsaState?.nextTopic,
+            onAdd = { title, topic, difficulty, url, outcome, minutes ->
+                dsaVm.add(title, topic, difficulty, url, outcome, minutes)
+                dsaSheet = null
+            },
+            onAttempt = { id, outcome, minutes ->
+                dsaVm.attempt(id, outcome, minutes)
+                dsaSheet = null
+            },
+            onDismiss = { dsaSheet = null },
         )
     }
 

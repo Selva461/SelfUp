@@ -7,6 +7,7 @@ import app.selfup.data.Backup
 import app.selfup.data.GoalsRepository
 import app.selfup.data.HealthRepository
 import app.selfup.data.HunterRepository
+import app.selfup.data.DsaRepository
 import app.selfup.data.LifeRepository
 import app.selfup.data.MindRepository
 import app.selfup.data.RecordsRepository
@@ -51,6 +52,8 @@ class SelfUpApplication : Application() {
     }
 
     val hunter: HunterRepository by lazy { HunterRepository(database, repository) }
+
+    val dsa: DsaRepository by lazy { DsaRepository(database, repository) }
 
     val work: WorkRepository by lazy { WorkRepository(database, repository.clock, repository.dayBoundary) }
 
